@@ -10,21 +10,31 @@ using namespace boost::gil;
 using namespace boost::tuples;
 
 typedef boost::tuple<int, int, int> rgb;
+
+struct image_rgb{
+	rgb value;
+	int occurences;
+	int weight;
+};
+
 typedef boost::tuple<rgb, int> weighted_rgb;
+typedef image_rgb rgb_in_image;
 
-list<weighted_rgb> rgbList;
 
-void insert_rgb(weighted_rgb rgb2){
+list<rgb_in_image> rgbList;
+
+void insert_rgb(rgb_in_image rgb2){
 	if( rgbList.empty() )
 		rgbList.push_back( rgb2 );
 	else {
-		list<weighted_rgb>::iterator it = rgbList.begin();
-		while( it != rgbList.end() && get<0>(*it) < get<0>(rgb2) ) ++it;
+		list<rgb_in_image>::iterator it = rgbList.begin();
+		while( it != rgbList.end() && it->value < rgb2.value ) ++it;
 		
-		if( get<0>(*it) < get<0>(rgb2) )
+		if( it->value < rgb2.value )
 			rgbList.insert(it, rgb2);
 		else{
-			get<1>(rgb2) = get<1>(*it) + get<1>(rgb2);
+			rgb2.occurences += it->occurences;
+			rgb2.weight += it->weight;
 			it = rgbList.erase(it);
 			rgbList.insert(it, rgb2);
 		}
@@ -61,31 +71,30 @@ int main() {
     int x,y;
     rgb8_view_t::xy_locator Loc = imageView.xy_at(0,0);
     rgb8_pixel_t pixel;
-    rgb rgb2(0,0,0);
-    weighted_rgb weightedRgb(rgb2, 0);
+    rgb_in_image currentRgb;
     for( y = 0; y < imageHeight; ++y ){
 	//rgb8_view_t::x_iterator iv_it = imageView.row_begin(y);
 	for( x = 0; x < imageWidth; ++x ){
 		pixel = *Loc;
 		//cout << "R: " << (int)at_c<0>(pixel) << " G: " << (int)at_c<1>(pixel) << " B: " << (int)at_c<2>(pixel) << endl;
-		get<0>(rgb2) = (int)at_c<0>(pixel);
-		get<1>(rgb2) = (int)at_c<1>(pixel);
-		get<2>(rgb2) = (int)at_c<2>(pixel);
-		get<0>(weightedRgb) = rgb2;
-		get<1>(weightedRgb) = x+y;
-		insert_rgb( weightedRgb );
+		get<0>(currentRgb.value) = (int)at_c<0>(pixel);
+		get<1>(currentRgb.value) = (int)at_c<1>(pixel);
+		get<2>(currentRgb.value) = (int)at_c<2>(pixel);
+		currentRgb.occurences = 1;
+		currentRgb.weight = x+y;
+		insert_rgb( currentRgb );
 		++Loc.x();
 	}
 	Loc.x() -= imageWidth;
 	Loc.y()++;
     }
     
-	for( list<weighted_rgb>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
-		rgb2 = get<0>(*it);
-		cout << "R: " << get<0>(rgb2) <<
-			" G: " << get<1>(rgb2) <<
-			" B: " << get<2>(rgb2) <<
-			"Weight: " << get<1>(*it) << endl;
+	for( list<rgb_in_image>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
+		//rgb2 = get<0>(*it);
+		cout << "R: " << get<0>(it->value) <<
+			" G: " << get<1>(it->value) <<
+			" B: " << get<2>(it->value) <<
+			"Weight: " << it->weight << endl;
 	}
 
     // Save the image upside down, preserving its native color space and channel depth
