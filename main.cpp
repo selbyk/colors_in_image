@@ -63,16 +63,20 @@ int main() {
 	rgb8_image_t img;
 	rgb8_view_t imageView;
 	
+	//Load image
 	jpeg_read_image( "test.jpg", img );
 	
 	rgb8_image_t resized( img.width(), img.height() );
 	
+	//Deminsion restraint to resize to, in px 
+	int resizeTo = 250;
+	
 	//Perform resize if necessary
-	(img.width() > 250 || img.height() > 250) && img.width() > img.height()
-		    ? resized.recreate(250,(250*(float)img.height()/img.width()))
-		    : resized.recreate((250*(float)img.width()/img.height()),250);
+	(img.width() > resizeTo || img.height() > resizeTo) && img.width() > img.height()
+		    ? resized.recreate(resizeTo,(resizeTo*(float)img.height()/img.width()))
+		    : resized.recreate((resizeTo*(float)img.width()/img.height()),resizeTo);
 
-	if( img.width() != resized.width() || img.height() != resized.width() ){
+	if( img.width() != resized.width() || img.height() != resized.height() ){
 		resize_view( const_view(img), view(resized), bilinear_sampler() );
 		imageView = view( resized );
 	} else
@@ -115,14 +119,11 @@ int main() {
 			" Weight: " << it->weight << endl;
 	}*/
 	
-	
-	
 	//Load color definitions from file, yo
 	FILE *fp;
 	fp = fopen("colors.dat", "r+");
 	
 	color_def currentColor;
-	
 	// l is only here because i have been too lazy to alter color.dat.  it's a pain
 	int l;
 	char *name = new char[20], *hex = new char[6];
@@ -133,6 +134,10 @@ int main() {
 		currentColor.hex = hex;
 		colorDefinitions.push_back( currentColor );
 	}
+	
+	//Cleaning up after myself
+	delete name;
+	delete hex;
 	
 	//Test print
 	/*for( list<color_def>::iterator it = colorDefinitions.begin(); it != colorDefinitions.end(); ++it ){
