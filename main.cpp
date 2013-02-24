@@ -22,8 +22,8 @@ typedef boost::tuple<int, int, int> rgb;
 
 struct image_rgb{
 	rgb value;
-	int occurences;
-	int weight;
+	unsigned int occurences;
+	unsigned int weight;
 };
 
 struct color{
@@ -34,8 +34,8 @@ struct color{
 
 struct color_in_image{
 	rgb value;
-	int occurences;
-	int weight;
+	unsigned int occurences;
+	unsigned int weight;
 	string hex;
 	string name;
 };
@@ -51,8 +51,8 @@ list<image_color> colorsInImage;
 // comparison, not case sensitive.
 bool compare_by_weight (image_color first, image_color second)
 {
-  if (first.weight/first.occurences < second.weight/second.occurences) return true;
-  else return false;
+	if (first.weight/first.occurences > second.weight/second.occurences) return true;
+	else return false;
 }
 
 void insert_rgb(rgb_in_image rgb2){
@@ -94,112 +94,80 @@ void insert_image_color(image_color color){
 //typedef any_image_view<typename detail::images_get_const_views_t<my_images_t>::type> const_view_t;
 
 int main() {
-   /* any_image<my_images_t> image;
-    const_view_t view;
-    
-    jpeg_read_image( "test.jpg", image );
-    view = const_view( image );
-    color_converted_view<rgb8_pixel_t>(view);
-    
+	/* any_image<my_images_t> image;
+	const_view_t view;
+	
+	jpeg_read_image( "test.jpg", image );
+	view = const_view( image );
+	color_converted_view<rgb8_pixel_t>(view);
+	
 
-    // Save the image upside down, preserving its native color space and channel depth
-    jpeg_write_view( "test.jpg", view  );*/
-    boost::timer t;
+	// Save the image upside down, preserving its native color space and channel depth
+	jpeg_write_view( "test.jpg", view  );*/
+      
+	//Timer from boost to test performance
+	boost::timer t;
 
-    rgb8_image_t img;
-    rgb8_view_t imageView;
-    
-    jpeg_read_image( "oxford.jpg", img );
-    
-    rgb8_image_t resized;
-    img.width() > img.height() ? resized.recreate(250,(250*(float)img.height()/img.width()))
-			       : resized.recreate((250*(float)img.width()/img.height()),250);
+	rgb8_image_t img;
+	rgb8_view_t imageView;
+	
+	jpeg_read_image( "panda.jpg", img );
+	
+	rgb8_image_t resized;
+	
+	//Perform resize if necessary
+	(img.width() > 500 || img.height() > 500) && img.width() > img.height()
+		    ? resized.recreate(250,(250*(float)img.height()/img.width()))
+		    : resized.recreate((250*(float)img.width()/img.height()),250);
 
-    resize_view( const_view(img), view(resized), bilinear_sampler() );
-    
-    imageView = view( resized );
-    
-    //color_converted_view<rgb8_pixel_t>( imageView );
-    
-    int imageWidth = imageView.width(), imageHeight = imageView.height();
-    
-    cout << "Width: " << imageWidth << ", Height: " << imageHeight << endl;
-    
-    int x,y;
-    rgb8_view_t::xy_locator Loc = imageView.xy_at(0,0);
-    rgb8_pixel_t pixel;
-    rgb_in_image currentRgb;
-    
-    for( y = 0; y < imageHeight/2; ++y ){
-	//rgb8_view_t::x_iterator iv_it = imageView.row_begin(y);
-	for( x = 0; x < imageWidth/2; ++x ){
-		pixel = *Loc;
-		//cout << "R: " << (int)at_c<0>(pixel) << " G: " << (int)at_c<1>(pixel) << " B: " << (int)at_c<2>(pixel) << endl;
-		get<0>(currentRgb.value) = (int)at_c<0>(pixel);
-		get<1>(currentRgb.value) = (int)at_c<1>(pixel);
-		get<2>(currentRgb.value) = (int)at_c<2>(pixel);
-		currentRgb.occurences = 1;
-		currentRgb.weight = x+y;
-		insert_rgb( currentRgb );
-		++Loc.x();
+	resize_view( const_view(img), view(resized), bilinear_sampler() );
+	
+	imageView = view( resized );
+	
+	//Perform some commonly used operations so they aren't done too often
+	int imageWidth = imageView.width(), imageHeight = imageView.height();
+	int xc = imageWidth/2, yc = imageHeight/2;
+	int numPix = imageWidth*imageHeight;
+	
+	//Prepare to traverse pixels!
+	int x,y;
+	rgb8_pixel_t pixel;
+	rgb_in_image currentRgb;
+	rgb8_view_t::xy_locator Loc = imageView.xy_at(0,0);
+	for( y = 0; y < imageHeight; ++y ){
+		//rgb8_view_t::x_iterator iv_it = imageView.row_begin(y);
+		for( x = 0; x < imageWidth; ++x ){
+			pixel = *Loc;
+			get<0>(currentRgb.value) = (int)at_c<0>(pixel);
+			get<1>(currentRgb.value) = (int)at_c<1>(pixel);
+			get<2>(currentRgb.value) = (int)at_c<2>(pixel);
+			currentRgb.occurences = 1;
+			currentRgb.weight = numPix*(float)(1/(float)log(pow( xc-x, 2 ) + pow( yc-y, 2 )));
+			insert_rgb( currentRgb );
+			++Loc.x();
+		}
+		Loc.x() -= imageWidth;
+		Loc.y()++;
 	}
-	for( x; x < imageWidth; ++x ){
-		pixel = *Loc;
-		//cout << "R: " << (int)at_c<0>(pixel) << " G: " << (int)at_c<1>(pixel) << " B: " << (int)at_c<2>(pixel) << endl;
-		get<0>(currentRgb.value) = (int)at_c<0>(pixel);
-		get<1>(currentRgb.value) = (int)at_c<1>(pixel);
-		get<2>(currentRgb.value) = (int)at_c<2>(pixel);
-		currentRgb.occurences = 1;
-		currentRgb.weight = imageWidth-x+y;
-		insert_rgb( currentRgb );
-		++Loc.x();
-	}
-	Loc.x() -= imageWidth;
-	Loc.y()++;
-    }
-    for( y; y < imageHeight; ++y ){
-	//rgb8_view_t::x_iterator iv_it = imageView.row_begin(y);
-	for( x = 0; x < imageWidth/2; ++x ){
-		pixel = *Loc;
-		//cout << "R: " << (int)at_c<0>(pixel) << " G: " << (int)at_c<1>(pixel) << " B: " << (int)at_c<2>(pixel) << endl;
-		get<0>(currentRgb.value) = (int)at_c<0>(pixel);
-		get<1>(currentRgb.value) = (int)at_c<1>(pixel);
-		get<2>(currentRgb.value) = (int)at_c<2>(pixel);
-		currentRgb.occurences = 1;
-		currentRgb.weight = x+imageHeight-y;
-		insert_rgb( currentRgb );
-		++Loc.x();
-	}
-	for( x; x < imageWidth; ++x ){
-		pixel = *Loc;
-		//cout << "R: " << (int)at_c<0>(pixel) << " G: " << (int)at_c<1>(pixel) << " B: " << (int)at_c<2>(pixel) << endl;
-		get<0>(currentRgb.value) = (int)at_c<0>(pixel);
-		get<1>(currentRgb.value) = (int)at_c<1>(pixel);
-		get<2>(currentRgb.value) = (int)at_c<2>(pixel);
-		currentRgb.occurences = 1;
-		currentRgb.weight = imageWidth-x+imageHeight-y;
-		insert_rgb( currentRgb );
-		++Loc.x();
-	}
-	Loc.x() -= imageWidth;
-	Loc.y()++;
-    }
     
-	for( list<rgb_in_image>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
+	/*for( list<rgb_in_image>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
 		//rgb2 = get<0>(*it);
 		cout << "R: " << get<0>(it->value) <<
 			" G: " << get<1>(it->value) <<
 			" B: " << get<2>(it->value) <<
 			" Occurences: " << it->occurences <<
 			" Weight: " << it->weight << endl;
-	}
+	}*/
 	
 	list<color_def> colorDefinitions;
-	FILE *fp;
 	
+	//Load color definitions from file, yo
+	FILE *fp;
 	fp = fopen("colors.dat", "r+");
 	
 	color_def currentColor;
+	
+	// l is only here because i have been too lazy to alter color.dat.  it's a pain
 	int l;
 	char *name = new char[20], *hex = new char[6];
 	
@@ -210,15 +178,17 @@ int main() {
 		colorDefinitions.push_back( currentColor );
 	}
 	
-	
-	for( list<color_def>::iterator it = colorDefinitions.begin(); it != colorDefinitions.end(); ++it ){
+	/*for( list<color_def>::iterator it = colorDefinitions.begin(); it != colorDefinitions.end(); ++it ){
 		cout << "R: " << get<0>(it->value) <<
 			" G: " << get<1>(it->value) <<
 			" B: " << get<2>(it->value) <<
 			" Name: " << it->name <<
 			" Hex: #" << it->hex << endl;
-	}
+	}*/
 
+	//Match rgb values to color definitions with names, hex values, and all that good stuff
+	//uses rgb values as 3d points, assuming the shortest distance between the points is the
+	//closest color match.  I am still not sure, but it seems to work.  Can't find a better way, either.
 	image_color color;
 	int shortestDist, currentDist;
 	for( list<rgb_in_image>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
@@ -240,20 +210,19 @@ int main() {
 		insert_image_color( color );
 	}
 	
+	//What we've all been waiting for.  Outputs the colors within the image in order of dominance
 	colorsInImage.sort( compare_by_weight );
 	for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
-		cout << "R: " << get<0>(it->value) <<
-			" G: " << get<1>(it->value) <<
-			" B: " << get<2>(it->value) <<
-			" Name: " << it->name <<
-			" Hex: #" << it->hex <<
+		cout << "Name: " << it->name <<
+			" RGB: (" << get<0>(it->value) <<
+			", " << get<1>(it->value) <<
+			", " << get<2>(it->value) <<
+			") Hex: #" << it->hex <<
 			" Occurences: " << it->occurences << 
 			" Weight: " << it->weight << endl;
 	}
 	
-	cout << t.elapsed() << endl;
-    // Save the image upside down, preserving its native color space and channel depth
-    //jpeg_write_view( "out-dynamic_image.jpg", flipped_up_down_view( imageView ) );
+	cout << "Time elapsed: " << t.elapsed() << "s\n";
 
-    return 0;
+	return 0;
 }
