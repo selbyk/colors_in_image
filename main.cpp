@@ -72,8 +72,11 @@ int main() {
 		    ? resized.recreate(250,(250*(float)img.height()/img.width()))
 		    : resized.recreate((250*(float)img.width()/img.height()),250);
 
-	resize_view( const_view(img), view(resized), bilinear_sampler() );
-	imageView = view( resized );
+	if( img.width() != resized.width() || img.height() != resized.width() ){
+		resize_view( const_view(img), view(resized), bilinear_sampler() );
+		imageView = view( resized );
+	} else
+		imageView = view( img );
 	
 	//Perform some commonly used operations so they aren't done too often
 	int imageWidth = imageView.width(), imageHeight = imageView.height();
