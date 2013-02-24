@@ -1,9 +1,15 @@
+#include <stdio.h>
 #include <list>
-#include <boost/mpl/vector.hpp>
+//#include <boost/mpl/vector.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <boost/tuple/tuple_comparison.hpp>
+
 #include <boost/gil/image.hpp>
 #include <boost/gil/extension/io/jpeg_dynamic_io.hpp>
+
+//Not included in boost libraries, downloaded from Adobe's svn
+#include "../boost_1_53_0/boost/gil/extension/numeric/sampler.hpp"
+#include "../boost_1_53_0/boost/gil/extension/numeric/resample.hpp"
 
 using namespace std;
 using namespace boost::gil;
@@ -17,9 +23,15 @@ struct image_rgb{
 	int weight;
 };
 
+struct color{
+	rgb value;
+	string hex;
+	string name;
+};
+
 typedef boost::tuple<rgb, int> weighted_rgb;
 typedef image_rgb rgb_in_image;
-
+typedef color color_def;
 
 list<rgb_in_image> rgbList;
 
@@ -55,12 +67,18 @@ int main() {
     // Save the image upside down, preserving its native color space and channel depth
     jpeg_write_view( "test.jpg", view  );*/
 
-    rgb8_image_t imageR;
+    rgb8_image_t img;
     rgb8_view_t imageView;
     
-    jpeg_read_image( "test.jpg", imageR );
+    jpeg_read_image( "test.jpg", img );
     
-    imageView = view( imageR );
+    rgb8_image_t resized;
+    img.width() > img.height() ? resized.recreate(250,(250*(float)img.height()/img.width()))
+			       : resized.recreate((250*(float)img.width()/img.height()),250);
+
+    resize_view( const_view(img), view(resized), bilinear_sampler() );
+    
+    imageView = view( resized );
     
     //color_converted_view<rgb8_pixel_t>( imageView );
     
@@ -72,9 +90,10 @@ int main() {
     rgb8_view_t::xy_locator Loc = imageView.xy_at(0,0);
     rgb8_pixel_t pixel;
     rgb_in_image currentRgb;
-    for( y = 0; y < imageHeight; ++y ){
+    
+    for( y = 0; y < imageHeight/2; ++y ){
 	//rgb8_view_t::x_iterator iv_it = imageView.row_begin(y);
-	for( x = 0; x < imageWidth; ++x ){
+	for( x = 0; x < imageWidth/2; ++x ){
 		pixel = *Loc;
 		//cout << "R: " << (int)at_c<0>(pixel) << " G: " << (int)at_c<1>(pixel) << " B: " << (int)at_c<2>(pixel) << endl;
 		get<0>(currentRgb.value) = (int)at_c<0>(pixel);
@@ -82,6 +101,44 @@ int main() {
 		get<2>(currentRgb.value) = (int)at_c<2>(pixel);
 		currentRgb.occurences = 1;
 		currentRgb.weight = x+y;
+		insert_rgb( currentRgb );
+		++Loc.x();
+	}
+	for( x; x < imageWidth; ++x ){
+		pixel = *Loc;
+		//cout << "R: " << (int)at_c<0>(pixel) << " G: " << (int)at_c<1>(pixel) << " B: " << (int)at_c<2>(pixel) << endl;
+		get<0>(currentRgb.value) = (int)at_c<0>(pixel);
+		get<1>(currentRgb.value) = (int)at_c<1>(pixel);
+		get<2>(currentRgb.value) = (int)at_c<2>(pixel);
+		currentRgb.occurences = 1;
+		currentRgb.weight = imageWidth-x+y;
+		insert_rgb( currentRgb );
+		++Loc.x();
+	}
+	Loc.x() -= imageWidth;
+	Loc.y()++;
+    }
+    for( y; y < imageHeight; ++y ){
+	//rgb8_view_t::x_iterator iv_it = imageView.row_begin(y);
+	for( x = 0; x < imageWidth/2; ++x ){
+		pixel = *Loc;
+		//cout << "R: " << (int)at_c<0>(pixel) << " G: " << (int)at_c<1>(pixel) << " B: " << (int)at_c<2>(pixel) << endl;
+		get<0>(currentRgb.value) = (int)at_c<0>(pixel);
+		get<1>(currentRgb.value) = (int)at_c<1>(pixel);
+		get<2>(currentRgb.value) = (int)at_c<2>(pixel);
+		currentRgb.occurences = 1;
+		currentRgb.weight = x+imageHeight-y;
+		insert_rgb( currentRgb );
+		++Loc.x();
+	}
+	for( x; x < imageWidth; ++x ){
+		pixel = *Loc;
+		//cout << "R: " << (int)at_c<0>(pixel) << " G: " << (int)at_c<1>(pixel) << " B: " << (int)at_c<2>(pixel) << endl;
+		get<0>(currentRgb.value) = (int)at_c<0>(pixel);
+		get<1>(currentRgb.value) = (int)at_c<1>(pixel);
+		get<2>(currentRgb.value) = (int)at_c<2>(pixel);
+		currentRgb.occurences = 1;
+		currentRgb.weight = imageWidth-x+imageHeight-y;
 		insert_rgb( currentRgb );
 		++Loc.x();
 	}
@@ -94,7 +151,33 @@ int main() {
 		cout << "R: " << get<0>(it->value) <<
 			" G: " << get<1>(it->value) <<
 			" B: " << get<2>(it->value) <<
-			"Weight: " << it->weight << endl;
+			" Occurences: " << it->occurences <<
+			" Weight: " << it->weight << endl;
+	}
+	
+	list<color_def> colorDefinitions;
+	FILE *fp;
+	
+	fp = fopen("colors.dat", "r+");
+	
+	color_def currentColor;
+	int l;
+	char *name = new char[20], *hex = new char[6];
+	
+	while(fscanf(fp, "%s %s %i %i %i %i", name, hex, &get<0>(currentColor.value),
+					      &get<0>(currentColor.value), &get<0>(currentColor.value), &l ) == 6){
+		currentColor.name = name;
+		currentColor.hex = hex;
+		colorDefinitions.push_back( currentColor );
+	}
+	
+	for( list<color_def>::iterator it = colorDefinitions.begin(); it != colorDefinitions.end(); ++it ){
+		//rgb2 = get<0>(*it);
+		cout << "R: " << get<0>(it->value) <<
+			" G: " << get<1>(it->value) <<
+			" B: " << get<2>(it->value) <<
+			" Name: " << it->name <<
+			" Hex: #" << it->hex << endl;
 	}
 
     // Save the image upside down, preserving its native color space and channel depth

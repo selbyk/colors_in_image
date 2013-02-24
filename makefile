@@ -1,6 +1,6 @@
 CC=g++
 CFLAGS=-c -Wall
-LDFLAGS=-I ../boost_1_53_0
+LDFLAGS=-I ../boost_1_53_0 -I ../boost_1_53_0/boost/gil/extension/numeric
 LFLAGS=-ljpeg
 SOURCES=main.cpp
 OBJECTS=$(SOURCES:.cpp=.o)
