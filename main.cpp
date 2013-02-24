@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <list>
 //#include <boost/mpl/vector.hpp>
 #include <boost/tuple/tuple.hpp>
@@ -6,6 +7,8 @@
 
 #include <boost/gil/image.hpp>
 #include <boost/gil/extension/io/jpeg_dynamic_io.hpp>
+
+#include <boost/timer.hpp>
 
 //Not included in boost libraries, downloaded from Adobe's svn
 #include "../boost_1_53_0/boost/gil/extension/numeric/sampler.hpp"
@@ -29,11 +32,28 @@ struct color{
 	string name;
 };
 
+struct color_in_image{
+	rgb value;
+	int occurences;
+	int weight;
+	string hex;
+	string name;
+};
+
 typedef boost::tuple<rgb, int> weighted_rgb;
 typedef image_rgb rgb_in_image;
 typedef color color_def;
+typedef color_in_image image_color;
 
 list<rgb_in_image> rgbList;
+list<image_color> colorsInImage;
+
+// comparison, not case sensitive.
+bool compare_by_weight (image_color first, image_color second)
+{
+  if (first.weight/first.occurences < second.weight/second.occurences) return true;
+  else return false;
+}
 
 void insert_rgb(rgb_in_image rgb2){
 	if( rgbList.empty() )
@@ -42,13 +62,31 @@ void insert_rgb(rgb_in_image rgb2){
 		list<rgb_in_image>::iterator it = rgbList.begin();
 		while( it != rgbList.end() && it->value < rgb2.value ) ++it;
 		
-		if( it->value < rgb2.value )
+		if( it->value < rgb2.value || it == rgbList.end())
 			rgbList.insert(it, rgb2);
 		else{
 			rgb2.occurences += it->occurences;
 			rgb2.weight += it->weight;
 			it = rgbList.erase(it);
 			rgbList.insert(it, rgb2);
+		}
+	}
+}
+
+void insert_image_color(image_color color){
+	if( colorsInImage.empty() )
+		colorsInImage.push_back( color );
+	else {
+		list<image_color>::iterator it = colorsInImage.begin();
+		while( it != colorsInImage.end() && it->value < color.value ) ++it;
+		
+		if( it->value < color.value || it == colorsInImage.end())
+			colorsInImage.insert(it, color);
+		else{
+			color.occurences += it->occurences;
+			color.weight += it->weight;
+			it = colorsInImage.erase(it);
+			colorsInImage.insert(it, color);
 		}
 	}
 }
@@ -66,11 +104,12 @@ int main() {
 
     // Save the image upside down, preserving its native color space and channel depth
     jpeg_write_view( "test.jpg", view  );*/
+    boost::timer t;
 
     rgb8_image_t img;
     rgb8_view_t imageView;
     
-    jpeg_read_image( "test.jpg", img );
+    jpeg_read_image( "oxford.jpg", img );
     
     rgb8_image_t resized;
     img.width() > img.height() ? resized.recreate(250,(250*(float)img.height()/img.width()))
@@ -165,14 +204,14 @@ int main() {
 	char *name = new char[20], *hex = new char[6];
 	
 	while(fscanf(fp, "%s %s %i %i %i %i", name, hex, &get<0>(currentColor.value),
-					      &get<0>(currentColor.value), &get<0>(currentColor.value), &l ) == 6){
+					      &get<1>(currentColor.value), &get<2>(currentColor.value), &l ) == 6){
 		currentColor.name = name;
 		currentColor.hex = hex;
 		colorDefinitions.push_back( currentColor );
 	}
 	
+	
 	for( list<color_def>::iterator it = colorDefinitions.begin(); it != colorDefinitions.end(); ++it ){
-		//rgb2 = get<0>(*it);
 		cout << "R: " << get<0>(it->value) <<
 			" G: " << get<1>(it->value) <<
 			" B: " << get<2>(it->value) <<
@@ -180,6 +219,39 @@ int main() {
 			" Hex: #" << it->hex << endl;
 	}
 
+	image_color color;
+	int shortestDist, currentDist;
+	for( list<rgb_in_image>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
+		shortestDist = 255;
+		for( list<color_def>::iterator it2 = colorDefinitions.begin(); it2 != colorDefinitions.end(); ++it2 ){
+			currentDist = sqrt( pow( get<0>(it2->value)-get<0>(it->value), 2 )
+					  + pow( get<1>(it2->value)-get<1>(it->value), 2 )
+					  + pow( get<2>(it2->value)-get<2>(it->value), 2 ) );
+			if( currentDist < shortestDist ){
+				shortestDist = currentDist;
+				currentColor = *it2;
+			}
+		}
+		color.value = currentColor.value;
+		color.hex = currentColor.hex;
+		color.name = currentColor.name;
+		color.occurences = it->occurences;
+		color.weight = it->weight;
+		insert_image_color( color );
+	}
+	
+	colorsInImage.sort( compare_by_weight );
+	for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
+		cout << "R: " << get<0>(it->value) <<
+			" G: " << get<1>(it->value) <<
+			" B: " << get<2>(it->value) <<
+			" Name: " << it->name <<
+			" Hex: #" << it->hex <<
+			" Occurences: " << it->occurences << 
+			" Weight: " << it->weight << endl;
+	}
+	
+	cout << t.elapsed() << endl;
     // Save the image upside down, preserving its native color space and channel depth
     //jpeg_write_view( "out-dynamic_image.jpg", flipped_up_down_view( imageView ) );
 
