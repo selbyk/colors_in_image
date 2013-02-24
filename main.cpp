@@ -111,12 +111,12 @@ int main() {
 	rgb8_image_t img;
 	rgb8_view_t imageView;
 	
-	jpeg_read_image( "panda.jpg", img );
+	jpeg_read_image( "test.jpg", img );
 	
 	rgb8_image_t resized;
 	
 	//Perform resize if necessary
-	(img.width() > 500 || img.height() > 500) && img.width() > img.height()
+	(img.width() > 250 || img.height() > 250) && img.width() > img.height()
 		    ? resized.recreate(250,(250*(float)img.height()/img.width()))
 		    : resized.recreate((250*(float)img.width()/img.height()),250);
 
@@ -142,6 +142,8 @@ int main() {
 			get<1>(currentRgb.value) = (int)at_c<1>(pixel);
 			get<2>(currentRgb.value) = (int)at_c<2>(pixel);
 			currentRgb.occurences = 1;
+			//Eqn to calculate pixel weight... needs to be thought through more.
+			//In addition to this, weight is divided by occurences in sort
 			currentRgb.weight = numPix*(float)(1/(float)log(pow( xc-x, 2 ) + pow( yc-y, 2 )));
 			insert_rgb( currentRgb );
 			++Loc.x();
