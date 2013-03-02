@@ -12,6 +12,8 @@
 #include "../boost_1_53_0/boost/gil/extension/numeric/sampler.hpp"
 #include "../boost_1_53_0/boost/gil/extension/numeric/resample.hpp"
 
+#include <fstream>
+
 #include <boost/timer.hpp>
 
 using namespace std;
@@ -44,8 +46,11 @@ typedef struct{
 //Image manipulation functions
 void load_image(string filename);
 void convolute_image();
+void extract_rgb_values();
+void sort_rgb_values();
 
 //List insertion and sorting
+void load_color_definitions();
 void insert_image_rgb(image_rgb rgb2);
 void insert_image_color(image_color color);
 bool image_color_compare (image_color first, image_color second); // comparison for image_colors to sort colorsInImage
@@ -56,27 +61,174 @@ gray8_image_t convolutedImage;
 list<image_rgb> rgbList;
 list<image_color> colorsInImage;
 list<color_def> colorDefinitions;
+int resizeTo = 500;
+int threshold = 3;
 
 int main() {
 	//Timer from boost to test performance
 	boost::timer t;
 	
-	//Load image
-	load_image("oxford.jpg");
+	load_color_definitions();
 	
-	jpeg_write_view("input.jpg", view(sourceImage) );
+	//Print to file
+	ofstream myfile;
+	myfile.open ("example.html");
 	
-	convolute_image();
+	myfile << "<html><head><style>body{font-size: 11px;}.block{width:30px;height:30px;margin: 5px;float:left;clear:both;}\n" <<
+		  ".item{width:1100px;margin-left: auto ;margin-right: auto ;clear:both;}\n" <<
+		  "</style></head><body>\n";
 	
-	jpeg_write_view("input_convoluted.jpg", view(convolutedImage) );
+	string imageNames[5];
+	imageNames[0] = "oxford.jpg"; 
+	imageNames[1] = "panda.jpg";
+	imageNames[2] = "red_dress.jpg";
+	imageNames[3] = "girl_shirt.jpg";
+	imageNames[4] = "lotus.jpg";
+	
+	for( int i = 0; i < 5; ++i ){
+		rgbList.clear();
+		colorsInImage.clear();
+	  
+		//Load image
+		load_image(imageNames[i]);
+		
+		convolute_image();
+		
+		extract_rgb_values();
+		
+		//Test print
+		/*for( list<image_rgb>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
+			//rgb2 = get<0>(*it);
+			cout << "R: " << get<0>(it->value) <<
+				" G: " << get<1>(it->value) <<
+				" B: " << get<2>(it->value) <<
+				" Occurences: " << it->occurences <<
+				" Weight: " << it->weight << endl;
+		}*/
+		
+		sort_rgb_values();
+		
+		//What we've all been waiting for.  Outputs the colors within the image in order of dominance
+		colorsInImage.sort( image_color_compare );
+		/*
+		for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
+			cout << "Name: " << it->name <<
+				" RGB: (" << get<0>(it->value) <<
+				", " << get<1>(it->value) <<
+				", " << get<2>(it->value) <<
+				") Hex: " << it->hex <<
+				" Occurences: " << it->occurences << 
+				" Weight: " << it->weight <<
+				" Varied Weights: (" << it->varied_weights[0];
+			for( int i = 1; i < 9; ++i )
+				cout << ", " << it->varied_weights[i];
+			cout << ")\n";
+		}*/
+		
+		jpeg_write_view(string("input")+(char)(i+49)+".jpg", view(sourceImage) );
+		jpeg_write_view(string("input_convoluted")+(char)(i+49)+".jpg", view(convolutedImage) );
+		
+		myfile << "<div class = 'item'>\n";
+		for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
+			myfile << "<div class = 'block' style='background-color:" << it->hex << ";'></div>\n";
+		}
+		myfile << "<div class = 'image'>\n" <<
+			  "<img src='input" << i+1 << ".jpg'>\n" <<
+			  "<img src='input_convoluted" << i+1 << ".jpg'>\n";
+			  
+		for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
+			myfile << "</br>Name: " << it->name <<
+				" RGB: (" << get<0>(it->value) <<
+				", " << get<1>(it->value) <<
+				", " << get<2>(it->value) <<
+				") Hex: " << it->hex <<
+				" Occurences: " << it->occurences << 
+				" Weight: " << it->weight <<
+				" Varied Weights: (" << it->varied_weights[0];
+			for( int i = 1; i < 9; ++i )
+				myfile << ", " << it->varied_weights[i];
+			myfile << ")\n";
+		}
+		myfile << "</div></div>\n";
+	}
+	myfile << "</body></html>\n";
+	myfile.close();
+
+	cout << "Time elapsed: " << t.elapsed() << "s\n";
+
+	return 0;
+}
+
+void load_image(string filename){
+	rgb8_image_t loadedImage;
+	
+	jpeg_read_image( filename, loadedImage );
+	//Deminsion restraint to resize to, in px 
+
+	
+	//Perform resize if necessary
+	if( resizeTo != 0 && (loadedImage.width() > resizeTo || loadedImage.height() > resizeTo) ){
+		loadedImage.width() > loadedImage.height() ? sourceImage.recreate(resizeTo,(resizeTo*(float)loadedImage.height()/loadedImage.width()))
+							   : sourceImage.recreate((resizeTo*(float)loadedImage.width()/loadedImage.height()),resizeTo);
+		resize_view( const_view(loadedImage), view(sourceImage), bilinear_sampler() );
+	}else{
+		sourceImage.recreate( loadedImage.dimensions() );
+		copy_pixels( const_view(loadedImage), view(sourceImage) );
+	}
+}
+
+void convolute_image(){
+	convolutedImage.recreate( sourceImage.dimensions() );
+	//Create grayscale copy of original image
+	copy_pixels(color_converted_view<gray8_pixel_t>(const_view(sourceImage)), view(convolutedImage));
+	
+	gray8_image_t grayscaleImage( sourceImage.width()+4, sourceImage.height()+4 );
+	
+	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
+	
+	convolutedImage.recreate( sourceImage.width()+2, sourceImage.height()+2 );
+	
+	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
+	
+	gray8_view_t src = view(grayscaleImage);
+	gray8_view_t dst = view(convolutedImage);
+	
+	gray8_pixel_t pixel;
+	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
+	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
+	int x,y, dstValue;
+	for( y = 0; y < yMax; ++y ){
+		for( x = 0; x < xMax; ++x ){
+			dstValue = 0;
+			dstValue -= 4*(*srcLoc);
+			dstValue += srcLoc(0,1);
+			dstValue += srcLoc(1,0);
+			dstValue += srcLoc(0,-1);
+			dstValue += srcLoc(-1,0);
+			if( dstValue < 0 )
+				dstValue = 0;
+			*dstLoc = dstValue;
+			//cout << (int)*srcLoc << "=>" << dstValue << endl;
+			//cout << (int)at_c<1>(pixel)<< endl;
+			//cout << (int)at_c<2>(pixel) ;
+			++srcLoc.x();
+			++dstLoc.x();
+		}
+		srcLoc.x() -= (xMax);
+		dstLoc.x() -= (xMax);
+		srcLoc.y()++;
+		dstLoc.y()++;
+	}
+}
+
+void extract_rgb_values(){
+	rgb8_view_t src = view(sourceImage);
+	gray8_view_t test = view(convolutedImage);
 	
 	//Perform some commonly used operations so they aren't done too often
 	int imageWidth = sourceImage.width(), imageHeight = sourceImage.height();
 	int xc = imageWidth/2, yc = imageHeight/2;
 	int numPix = imageWidth*imageHeight;
-	
-	rgb8_view_t src = view(sourceImage);
-	gray8_view_t test = view(convolutedImage);
 	
 	//Prepare to traverse pixels!
 	int x,y;
@@ -84,27 +236,28 @@ int main() {
 	image_rgb currentRgb;
 	rgb8_view_t::xy_locator srcLoc = src.xy_at(1,1);
 	gray8_view_t::xy_locator testLoc = test.xy_at(1,1);
+
 	for( y = 0; y < imageHeight-1; ++y ){
 		for( x = 0; x < imageWidth-1; ++x ){
 			//Calculate varied_weight from convolution
 			for( int i = 0; i < 9; ++i )
 				currentRgb.varied_weights[i] = 0;
 			currentRgb.varied_weight = 0;
-			if( *testLoc != (testLoc(0, 1)) )
+			if( abs( *testLoc - (testLoc(0, 1)) ) >= threshold )
 				currentRgb.varied_weight++;
-			if( *testLoc != (testLoc(1, 1)) )
+			if( abs( *testLoc - (testLoc(1, 1)) ) >= threshold )
 				currentRgb.varied_weight++;
-			if( *testLoc != (testLoc(1, 0)) )
+			if( abs( *testLoc - (testLoc(1, 0)) ) >= threshold )
 				currentRgb.varied_weight++;
-			if( *testLoc != (testLoc(1, -1)) )
+			if( abs( *testLoc - (testLoc(1, -1)) ) >= threshold )
 				currentRgb.varied_weight++;
-			if( *testLoc != (testLoc(0,-1)) )
+			if( abs( *testLoc - (testLoc(0,-1)) ) >= threshold )
 				currentRgb.varied_weight++;
-			if( *testLoc != (testLoc(-1,-1)) )
+			if( abs( *testLoc - (testLoc(-1,-1)) ) >= threshold )
 				currentRgb.varied_weight++;
-			if( *testLoc != (testLoc(-1, 0)) )
+			if( abs( *testLoc - (testLoc(-1, 0)) ) >= threshold )
 				currentRgb.varied_weight++;
-			if( *testLoc != (testLoc(-1, 1)) )
+			if( abs( *testLoc - (testLoc(-1, 1)) ) >= threshold )
 				currentRgb.varied_weight++;
 			currentRgb.varied_weights[currentRgb.varied_weight] = 1;
 			pixel = *srcLoc;
@@ -124,17 +277,9 @@ int main() {
 		srcLoc.y()++;
 		testLoc.y()++;
 	}
-    
-	//Test print
-	/*for( list<image_rgb>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
-		//rgb2 = get<0>(*it);
-		cout << "R: " << get<0>(it->value) <<
-			" G: " << get<1>(it->value) <<
-			" B: " << get<2>(it->value) <<
-			" Occurences: " << it->occurences <<
-			" Weight: " << it->weight << endl;
-	}*/
-	
+}
+
+void load_color_definitions(){
 	//Load color definitions from file, yo
 	FILE *fp;
 	fp = fopen("colorDefinitions.dat", "r+");
@@ -173,11 +318,14 @@ int main() {
 			" Name: " << it->name <<
 			" Hex: #" << it->hex << endl;
 	}*/
+}
 
+void sort_rgb_values(){
 	//Match rgb values to color definitions with names, hex values, and all that good stuff
 	//uses rgb values as 3d points, assuming the shortest distance between the points is the
 	//closest color match.  I am still not sure, but it seems to work.  Can't find a better way, either.
 	image_color color;
+	color_def currentColor;
 	int shortestDist, currentDist;
 	for( list<image_rgb>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
 		shortestDist = 255;
@@ -200,86 +348,6 @@ int main() {
 			color.varied_weights[i] += it->varied_weights[i];
 		}
 		insert_image_color( color );
-	}
-	
-	//What we've all been waiting for.  Outputs the colors within the image in order of dominance
-	colorsInImage.sort( image_color_compare );
-	for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
-		cout << "Name: " << it->name <<
-			" RGB: (" << get<0>(it->value) <<
-			", " << get<1>(it->value) <<
-			", " << get<2>(it->value) <<
-			") Hex: " << it->hex <<
-			" Occurences: " << it->occurences << 
-			" Weight: " << it->weight <<
-			" Varied Weights: (" << it->varied_weights[0];
-		for( int i = 1; i < 9; ++i )
-			cout << ", " << it->varied_weights[i];
-		cout << ")\n";
-	}
-
-	cout << "Time elapsed: " << t.elapsed() << "s\n";
-
-	return 0;
-}
-
-void load_image(string filename){
-	rgb8_image_t loadedImage;
-	
-	jpeg_read_image( filename, loadedImage );
-	//Deminsion restraint to resize to, in px 
-	int resizeTo = 500;
-	
-	//Perform resize if necessary
-	if( resizeTo != 0 && (loadedImage.width() > resizeTo || loadedImage.height() > resizeTo) ){
-		loadedImage.width() > loadedImage.height() ? sourceImage.recreate(resizeTo,(resizeTo*(float)loadedImage.height()/loadedImage.width()))
-							   : sourceImage.recreate((resizeTo*(float)loadedImage.width()/loadedImage.height()),resizeTo);
-		resize_view( const_view(loadedImage), view(sourceImage), bilinear_sampler() );
-	}else{
-		sourceImage.recreate( loadedImage.dimensions() );
-		copy_pixels( const_view(loadedImage), view(sourceImage) );
-	}
-}
-
-void convolute_image(){
-	convolutedImage.recreate( sourceImage.dimensions() );
-	//Create grayscale copy of original image
-	copy_pixels(color_converted_view<gray8_pixel_t>(const_view(sourceImage)), view(convolutedImage));
-	
-	gray8_image_t grayscaleImage( sourceImage.width()+2, sourceImage.height()+2 );
-	
-	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
-	
-	int xMax = sourceImage.width(), yMax = sourceImage.height();
-	
-	gray8_view_t src = view(grayscaleImage);
-	gray8_view_t dst = view(convolutedImage);
-	
-	gray8_pixel_t pixel;
-	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
-	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
-	int x,y, dstValue;
-	for( y = 0; y < yMax; ++y ){
-		for( x = 0; x < xMax; ++x ){
-			dstValue = 0;
-			dstValue -= 4*(*srcLoc);
-			dstValue += srcLoc(0,1);
-			dstValue += srcLoc(1,0);
-			dstValue += srcLoc(0,-1);
-			dstValue += srcLoc(-1,0);
-			if( dstValue < 0 )
-				dstValue = 0;
-			*dstLoc = dstValue;
-			//cout << (int)*srcLoc << "=>" << dstValue << endl;
-			//cout << (int)at_c<1>(pixel)<< endl;
-			//cout << (int)at_c<2>(pixel) ;
-			++srcLoc.x();
-			++dstLoc.x();
-		}
-		srcLoc.x() -= (xMax);
-		dstLoc.x() -= (xMax);
-		srcLoc.y()++;
-		dstLoc.y()++;
 	}
 }
 
