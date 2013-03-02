@@ -33,6 +33,8 @@ typedef struct{
 	unsigned int weight;
 	int varied_weight;
 	unsigned long int varied_weights[9];
+	int avgX;
+	int avgY;
 } image_rgb;
 typedef struct{
 	rgb value;
@@ -41,12 +43,17 @@ typedef struct{
 	unsigned long int varied_weights[9];
 	string hex;
 	string name;
+	int avgX;
+	int avgY;
 } image_color;
 
 //Image manipulation functions
 void load_image(string filename);
 void convolute_image();
+void sobel_image();
+void sharr_image();
 void extract_rgb_values();
+void extract_rgb_values_minus_20();
 void sort_rgb_values();
 
 //List insertion and sorting
@@ -61,8 +68,10 @@ gray8_image_t convolutedImage;
 list<image_rgb> rgbList;
 list<image_color> colorsInImage;
 list<color_def> colorDefinitions;
-int resizeTo = 500;
-int threshold = 3;
+int resizeTo = 450;
+int minThreshold = 2;
+int maxThreshold = 256;
+int numVariedWeights = 9;
 
 int main() {
 	//Timer from boost to test performance
@@ -74,18 +83,22 @@ int main() {
 	ofstream myfile;
 	myfile.open ("example.html");
 	
-	myfile << "<html><head><style>body{font-size: 11px;}.block{width:30px;height:30px;margin: 5px;float:left;clear:both;}\n" <<
-		  ".item{width:1100px;margin-left: auto ;margin-right: auto ;clear:both;}\n" <<
+	myfile << "<html><head><style>body{font-size: 11px;}.block{width:32px;height:32px;margin: -2px; margin-right: 2px !important; float:left;clear:both;}\n" <<
+		  ".item{width:950px; margin-left: auto; margin-right: auto; clear:both;}\n" <<
+		  ".color{width:100%;padding: 2px; margin-bottom: 5px; border: 1px; clear:both;}\n" <<
 		  "</style></head><body>\n";
 	
-	string imageNames[5];
+	string imageNames[8];
 	imageNames[0] = "oxford.jpg"; 
 	imageNames[1] = "panda.jpg";
 	imageNames[2] = "red_dress.jpg";
 	imageNames[3] = "girl_shirt.jpg";
 	imageNames[4] = "lotus.jpg";
+	imageNames[5] = "flower_dress.jpg";
+	imageNames[6] = "flower.jpg";
+	imageNames[7] = "earth.jpg";
 	
-	for( int i = 0; i < 5; ++i ){
+	for( int i = 0; i < 8; ++i ){
 		rgbList.clear();
 		colorsInImage.clear();
 	  
@@ -93,8 +106,11 @@ int main() {
 		load_image(imageNames[i]);
 		
 		convolute_image();
+		//sobel_image();
+		//sharr_image();
 		
-		extract_rgb_values();
+		//extract_rgb_values();
+		extract_rgb_values_minus_20();
 		
 		//Test print
 		/*for( list<image_rgb>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
@@ -129,27 +145,31 @@ int main() {
 		jpeg_write_view(string("input_convoluted")+(char)(i+49)+".jpg", view(convolutedImage) );
 		
 		myfile << "<div class = 'item'>\n";
-		for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
-			myfile << "<div class = 'block' style='background-color:" << it->hex << ";'></div>\n";
-		}
 		myfile << "<div class = 'image'>\n" <<
 			  "<img src='input" << i+1 << ".jpg'>\n" <<
-			  "<img src='input_convoluted" << i+1 << ".jpg'>\n";
-			  
+			  "<img src='input_convoluted" << i+1 << ".jpg'>\n</div>\n";
+		
+		/*for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
+			myfile << "<div class = 'block' style='background-color:" << it->hex << ";'></div>\n";
+		}*/	  
+		int imageWidth = sourceImage.width(), imageHeight = sourceImage.height();
+		int xc = imageWidth/2, yc = imageHeight/2;
 		for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
-			myfile << "</br>Name: " << it->name <<
-				" RGB: (" << get<0>(it->value) <<
+			myfile << "<div class = 'color' style='border:solid 1px " << it->hex << ";'>\n" <<
+				  "<div class = 'block' style='background-color:" << it->hex << ";'></div>\n" <<
+				  "Name: " << it->name <<
+				" * RGB: (" << get<0>(it->value) <<
 				", " << get<1>(it->value) <<
 				", " << get<2>(it->value) <<
-				") Hex: " << it->hex <<
-				" Occurences: " << it->occurences << 
-				" Weight: " << it->weight <<
-				" Varied Weights: (" << it->varied_weights[0];
-			for( int i = 1; i < 9; ++i )
+				") * Hex: " << it->hex <<
+				" * Occurences: " << it->occurences << 
+				" </br> Weight: " << it->weight <<
+				"  * Varied Weights: (" << it->varied_weights[0];
+			for( int i = 1; i < numVariedWeights; ++i )
 				myfile << ", " << it->varied_weights[i];
-			myfile << ")\n";
+			myfile << ") * Average Position: (" << it->avgX << ", " << it->avgY << ") ->Dist from center: "<< sqrt(pow(it->avgX-xc,2)+pow(it->avgY-yc,2)) <<"\n</div>\n";
 		}
-		myfile << "</div></div>\n";
+		myfile << "</div>\n";
 	}
 	myfile << "</body></html>\n";
 	myfile.close();
@@ -200,14 +220,106 @@ void convolute_image(){
 	for( y = 0; y < yMax; ++y ){
 		for( x = 0; x < xMax; ++x ){
 			dstValue = 0;
-			dstValue -= 4*(*srcLoc);
-			dstValue += srcLoc(0,1);
-			dstValue += srcLoc(1,0);
-			dstValue += srcLoc(0,-1);
-			dstValue += srcLoc(-1,0);
+			dstValue += 8*(*srcLoc);
+			dstValue -= srcLoc(-1,1);
+			dstValue -= srcLoc(1,1);
+			dstValue -= srcLoc(1,-1);
+			dstValue -= srcLoc(-1,-1);
+			dstValue -= srcLoc(0,1);
+			dstValue -= srcLoc(1,0);
+			dstValue -= srcLoc(0,-1);
+			dstValue -= srcLoc(-1,0);
 			if( dstValue < 0 )
 				dstValue = 0;
 			*dstLoc = dstValue;
+			//cout << (int)*srcLoc << "=>" << dstValue << endl;
+			//cout << (int)at_c<1>(pixel)<< endl;
+			//cout << (int)at_c<2>(pixel) ;
+			++srcLoc.x();
+			++dstLoc.x();
+		}
+		srcLoc.x() -= (xMax);
+		dstLoc.x() -= (xMax);
+		srcLoc.y()++;
+		dstLoc.y()++;
+	}
+}
+
+void sobel_image(){
+	convolutedImage.recreate( sourceImage.dimensions() );
+	//Create grayscale copy of original image
+	copy_pixels(color_converted_view<gray8_pixel_t>(const_view(sourceImage)), view(convolutedImage));
+	
+	gray8_image_t grayscaleImage( sourceImage.width()+4, sourceImage.height()+4 );
+	
+	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
+	
+	convolutedImage.recreate( sourceImage.width()+2, sourceImage.height()+2 );
+	
+	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
+	
+	gray8_view_t src = view(grayscaleImage);
+	gray8_view_t dst = view(convolutedImage);
+	
+	gray8_pixel_t pixel;
+	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
+	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
+	int x,y, dstX, dstY;
+	for( y = 0; y < yMax; ++y ){
+		for( x = 0; x < xMax; ++x ){
+			dstX = 0;
+			dstX += -1*srcLoc(-1,1); dstX += 0*srcLoc(0,1); dstX += srcLoc(1,1);
+			dstX += -2*srcLoc(-1,0);  dstX += 0*(*srcLoc); dstX += 2*srcLoc(1,0);
+			dstX += -1*srcLoc(-1,-1); dstX += 0*srcLoc(0,-1); dstX += srcLoc(1,-1);
+			dstY = 0;
+			dstY += -1*srcLoc(-1,1); dstY += -2*srcLoc(0,1); dstY += -1*srcLoc(1,1);
+			dstY += 0*srcLoc(-1,0);  dstY += 0*(*srcLoc); dstY += 0*srcLoc(1,0);
+			dstY += 1*srcLoc(-1,-1); dstY += 2*srcLoc(0,-1); dstY += 1*srcLoc(1,-1);
+			*dstLoc = sqrt(pow(dstX,2)+pow(dstY,2));
+			//cout << (int)*srcLoc << "=>" << dstValue << endl;
+			//cout << (int)at_c<1>(pixel)<< endl;
+			//cout << (int)at_c<2>(pixel) ;
+			++srcLoc.x();
+			++dstLoc.x();
+		}
+		srcLoc.x() -= (xMax);
+		dstLoc.x() -= (xMax);
+		srcLoc.y()++;
+		dstLoc.y()++;
+	}
+}
+
+void sharr_image(){
+	convolutedImage.recreate( sourceImage.dimensions() );
+	//Create grayscale copy of original image
+	copy_pixels(color_converted_view<gray8_pixel_t>(const_view(sourceImage)), view(convolutedImage));
+	
+	gray8_image_t grayscaleImage( sourceImage.width()+4, sourceImage.height()+4 );
+	
+	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
+	
+	convolutedImage.recreate( sourceImage.width()+2, sourceImage.height()+2 );
+	
+	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
+	
+	gray8_view_t src = view(grayscaleImage);
+	gray8_view_t dst = view(convolutedImage);
+	
+	gray8_pixel_t pixel;
+	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
+	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
+	int x,y, dstX, dstY;
+	for( y = 0; y < yMax; ++y ){
+		for( x = 0; x < xMax; ++x ){
+			dstX = 0;
+			dstX += 3*srcLoc(-1,1); dstX += 0*srcLoc(0,1); dstX += -3*srcLoc(1,1);
+			dstX += 10*srcLoc(-1,0);  dstX += 0*(*srcLoc); dstX += -10*srcLoc(1,0);
+			dstX += 3*srcLoc(-1,-1); dstX += 0*srcLoc(0,-1); dstX += -3*srcLoc(1,-1);
+			dstY = 0;
+			dstY += 3*srcLoc(-1,1); dstY += 10*srcLoc(0,1); dstY += 3*srcLoc(1,1);
+			dstY += 0*srcLoc(-1,0);  dstY += 0*(*srcLoc); dstY += 0*srcLoc(1,0);
+			dstY += -3*srcLoc(-1,-1); dstY += -10*srcLoc(0,-1); dstY += -3*srcLoc(1,-1);
+			*dstLoc = sqrt(pow(dstX,2)+pow(dstY,2))/13;
 			//cout << (int)*srcLoc << "=>" << dstValue << endl;
 			//cout << (int)at_c<1>(pixel)<< endl;
 			//cout << (int)at_c<2>(pixel) ;
@@ -237,29 +349,50 @@ void extract_rgb_values(){
 	rgb8_view_t::xy_locator srcLoc = src.xy_at(1,1);
 	gray8_view_t::xy_locator testLoc = test.xy_at(1,1);
 
-	for( y = 0; y < imageHeight-1; ++y ){
-		for( x = 0; x < imageWidth-1; ++x ){
+	for( y = imageHeight-1; y > 0; y-- ){
+		for( x = 0; x < imageWidth-1; x++ ){
 			//Calculate varied_weight from convolution
-			for( int i = 0; i < 9; ++i )
+			for( int i = 0; i < numVariedWeights; ++i )
 				currentRgb.varied_weights[i] = 0;
 			currentRgb.varied_weight = 0;
-			if( abs( *testLoc - (testLoc(0, 1)) ) >= threshold )
+			if( abs( *testLoc - (testLoc(0, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(0, 1)) ) <= maxThreshold )
 				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(1, 1)) ) >= threshold )
+			if( abs( *testLoc - (testLoc(1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 1)) ) <= maxThreshold )
 				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(1, 0)) ) >= threshold )
+			if( abs( *testLoc - (testLoc(1, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 0)) ) <= maxThreshold )
 				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(1, -1)) ) >= threshold )
+			if( abs( *testLoc - (testLoc(1, -1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, -1)) ) <= maxThreshold )
 				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(0,-1)) ) >= threshold )
+			if( abs( *testLoc - (testLoc(0,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(0, -1)) ) <= maxThreshold )
 				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-1,-1)) ) >= threshold )
+			if( abs( *testLoc - (testLoc(-1,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, -1)) ) <= maxThreshold )
 				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-1, 0)) ) >= threshold )
+			if( abs( *testLoc - (testLoc(-1, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 0)) ) <= maxThreshold )
 				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-1, 1)) ) >= threshold )
+			if( abs( *testLoc - (testLoc(-1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 1)) ) <= maxThreshold )
 				currentRgb.varied_weight++;
-			currentRgb.varied_weights[currentRgb.varied_weight] = 1;
+			//step further
+			/*
+			if( abs( *testLoc - (testLoc(0, 2)) ) >= minThreshold && abs( *testLoc - (testLoc(0, 2)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			//if( abs( *testLoc - (testLoc(1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 1)) ) <= maxThreshold )
+				//currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(2, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(2, 0)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			//if( abs( *testLoc - (testLoc(1, -1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, -1)) ) <= maxThreshold )
+				//currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(0,-2)) ) >= minThreshold && abs( *testLoc - (testLoc(0, -2)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			//if( abs( *testLoc - (testLoc(-1,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, -1)) ) <= maxThreshold )
+				//currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(-2, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(-2, 0)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			//if( abs( *testLoc - (testLoc(-1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 1)) ) <= maxThreshold )
+				//currentRgb.varied_weight++;
+			*/
+			currentRgb.varied_weights[currentRgb.varied_weight]++;
+				//currentRgb.varied_weights[currentRgb.varied_weight] += (*testLoc)/10;
+			
 			pixel = *srcLoc;
 			get<0>(currentRgb.value) = (int)at_c<0>(pixel);
 			get<1>(currentRgb.value) = (int)at_c<1>(pixel);
@@ -267,7 +400,89 @@ void extract_rgb_values(){
 			currentRgb.occurences = 1;
 			//Eqn to calculate pixel weight... needs to be thought through more.
 			//In addition to this, weight is divided by occurences in sort
-			currentRgb.weight = numPix*(float)(1/(float)log(pow( xc-x, 2 ) + pow( yc-y, 2 )+2));
+			currentRgb.weight = (float)numPix/sqrt(pow( xc-x, 2 ) + pow( yc-y, 2 )+2);
+			currentRgb.avgX = x;
+			currentRgb.avgY = y;
+			insert_image_rgb( currentRgb );
+			++srcLoc.x();
+			++testLoc.x();
+		}
+		srcLoc.x() -= (imageWidth - 1);
+		testLoc.x() -= (imageWidth - 1);
+		srcLoc.y()++;
+		testLoc.y()++;
+	}
+}
+
+void extract_rgb_values_minus_20(){
+	rgb8_view_t src = view(sourceImage);
+	gray8_view_t test = view(convolutedImage);
+	
+	//Perform some commonly used operations so they aren't done too often
+	int imageWidth = sourceImage.width()*0.60, imageHeight = sourceImage.height()*0.60;
+	int xc = imageWidth/2, yc = imageHeight/2;
+	int numPix = imageWidth*imageHeight;
+	
+	//Prepare to traverse pixels!
+	int x,y;
+	rgb8_pixel_t pixel;
+	image_rgb currentRgb;
+	rgb8_view_t::xy_locator srcLoc = src.xy_at(sourceImage.width()*0.20,sourceImage.height()*0.20);
+	gray8_view_t::xy_locator testLoc = test.xy_at(sourceImage.width()*0.20,sourceImage.height()*0.20);
+
+	for( y = imageHeight-1; y > 0; y-- ){
+		for( x = 0; x < imageWidth-1; x++ ){
+			//Calculate varied_weight from convolution
+			for( int i = 0; i < numVariedWeights; ++i )
+				currentRgb.varied_weights[i] = 0;
+			currentRgb.varied_weight = 0;
+			if( abs( *testLoc - (testLoc(0, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(0, 1)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 1)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(1, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 0)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(1, -1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, -1)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(0,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(0, -1)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(-1,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, -1)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(-1, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 0)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(-1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 1)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			//step further
+			/*if( abs( *testLoc - (testLoc(0, 2)) ) >= minThreshold && abs( *testLoc - (testLoc(0, 2)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			//if( abs( *testLoc - (testLoc(1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 1)) ) <= maxThreshold )
+				//currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(2, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(2, 0)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			//if( abs( *testLoc - (testLoc(1, -1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, -1)) ) <= maxThreshold )
+				//currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(0,-2)) ) >= minThreshold && abs( *testLoc - (testLoc(0, -2)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			//if( abs( *testLoc - (testLoc(-1,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, -1)) ) <= maxThreshold )
+				//currentRgb.varied_weight++;
+			if( abs( *testLoc - (testLoc(-2, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(-2, 0)) ) <= maxThreshold )
+				currentRgb.varied_weight++;
+			//if( abs( *testLoc - (testLoc(-1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 1)) ) <= maxThreshold )
+				//currentRgb.varied_weight++;
+			*/
+			currentRgb.varied_weights[currentRgb.varied_weight]++;
+			//currentRgb.varied_weights[currentRgb.varied_weight] += (*testLoc)/10;
+			
+			pixel = *srcLoc;
+			get<0>(currentRgb.value) = (int)at_c<0>(pixel);
+			get<1>(currentRgb.value) = (int)at_c<1>(pixel);
+			get<2>(currentRgb.value) = (int)at_c<2>(pixel);
+			currentRgb.occurences = 1;
+			//Eqn to calculate pixel weight... needs to be thought through more.
+			//In addition to this, weight is divided by occurences in sort
+			currentRgb.weight = (float)numPix/sqrt(pow( xc-x, 2 ) + pow( yc-y, 2 )+2);
+			currentRgb.avgX = x;
+			currentRgb.avgY = y;
 			insert_image_rgb( currentRgb );
 			++srcLoc.x();
 			++testLoc.x();
@@ -288,13 +503,14 @@ void load_color_definitions(){
 	char *str = new char[35];
 	do{
 		currentColor.name = fgets( str, 36, fp );
-		currentColor.hex = fgets( str, 8, fp );
-		if( fscanf(fp," %i %i %i ",&get<0>(currentColor.value), &get<1>(currentColor.value), &get<2>(currentColor.value) ) == 3 )
+		//currentColor.hex = fgets( str, 8, fp );
+		if( fscanf(fp," %s %i %i %i ", str, &get<0>(currentColor.value), &get<1>(currentColor.value), &get<2>(currentColor.value) ) == 4 ){
+			currentColor.hex = str;
 			colorDefinitions.push_back( currentColor );
-		else
+		}else
 			break;
 		//cout << currentColor.name << endl;
-		//while( fgetc(fp) != '\n' && !feof(fp) ); //Go to next line
+		while( fgetc(fp) != '\n' && !feof(fp) ); //Go to next line
 	}while( !feof(fp) );
 	/*while( fscanf(fp,"%s : %s : %i : %i : %i", name, hex, &get<0>(currentColor.value),
 					      &get<1>(currentColor.value), &get<2>(currentColor.value) ) > 0 ){
@@ -326,14 +542,17 @@ void sort_rgb_values(){
 	//closest color match.  I am still not sure, but it seems to work.  Can't find a better way, either.
 	image_color color;
 	color_def currentColor;
-	int shortestDist, currentDist;
+	float shortestDist, currentDist;
 	for( list<image_rgb>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
-		shortestDist = 255;
+		shortestDist = 99999999;
 		for( list<color_def>::iterator it2 = colorDefinitions.begin(); it2 != colorDefinitions.end(); ++it2 ){
-			currentDist = sqrt( pow( get<0>(it2->value)-get<0>(it->value), 2 )
+			/*currentDist = sqrt( pow( get<0>(it2->value)-get<0>(it->value), 2 )
 					  + pow( get<1>(it2->value)-get<1>(it->value), 2 )
-					  + pow( get<2>(it2->value)-get<2>(it->value), 2 ) );
-			if( currentDist < shortestDist ){
+					  + pow( get<2>(it2->value)-get<2>(it->value), 2 ) );*/
+			currentDist = (pow( get<0>(it2->value)-get<0>(it->value), 2 ))*0.299
+				      + (pow( get<1>(it2->value)-get<1>(it->value), 2 ))*0.587
+				      + (pow( get<2>(it2->value)-get<2>(it->value), 2 ))*0.114;
+			if( currentDist <= shortestDist ){
 				shortestDist = currentDist;
 				currentColor = *it2;
 			}
@@ -343,9 +562,11 @@ void sort_rgb_values(){
 		color.name = currentColor.name;
 		color.occurences = it->occurences;
 		color.weight = it->weight;
-		for( int i = 0; i < 9; ++i ){
-			color.varied_weights[i] = 0;
-			color.varied_weights[i] += it->varied_weights[i];
+		color.avgX = it->avgX;
+		color.avgY = it->avgY;
+		for( int i = 0; i < numVariedWeights; ++i ){
+			//color.varied_weights[i] = 0;
+			color.varied_weights[i] = it->varied_weights[i];
 		}
 		insert_image_color( color );
 	}
@@ -361,9 +582,11 @@ void insert_image_rgb(image_rgb rgb){
 		if( it->value < rgb.value || it == rgbList.end()){
 			rgbList.insert(it, rgb);
 		}else{
+			rgb.avgX = (rgb.avgX*rgb.occurences+it->avgX*it->occurences)/(rgb.occurences+it->occurences);
+			rgb.avgY = (rgb.avgY*rgb.occurences+it->avgY*it->occurences)/(rgb.occurences+it->occurences);
 			rgb.occurences += it->occurences;
 			rgb.weight += it->weight;
-			for( int i = 0; i < 9; ++i )
+			for( int i = 0; i < numVariedWeights; ++i )
 				rgb.varied_weights[i] += it->varied_weights[i];
 			it = rgbList.erase(it);
 			rgbList.insert(it, rgb);
@@ -381,9 +604,11 @@ void insert_image_color(image_color color){
 		if( it->value < color.value || it == colorsInImage.end())
 			colorsInImage.insert(it, color);
 		else{
+			color.avgX = (color.avgX*color.occurences+it->avgX*it->occurences)/(color.occurences+it->occurences);
+			color.avgY = (color.avgY*color.occurences+it->avgY*it->occurences)/(color.occurences+it->occurences);
 			color.occurences += it->occurences;
 			color.weight += it->weight;
-			for( int i = 0; i < 9; ++i )
+			for( int i = 0; i < numVariedWeights; ++i )
 				color.varied_weights[i] += it->varied_weights[i];
 			it = colorsInImage.erase(it);
 			colorsInImage.insert(it, color);
@@ -394,7 +619,7 @@ void insert_image_color(image_color color){
 bool image_color_compare (image_color first, image_color second)
 {
 	unsigned long long int firstWeight = 0, secondWeight = 0;
-	for( int i = 0; i < 9; ++i ){
+	for( int i = 0; i < numVariedWeights; ++i ){
 		firstWeight += first.varied_weights[i]*i;
 		secondWeight += second.varied_weights[i]*i;
 	}
