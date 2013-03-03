@@ -1,27 +1,29 @@
+#include <iostream>
+#include <fstream>
+#include <list>
 #include <stdio.h>
 #include <math.h>
-#include <list>
-
 #include <boost/tuple/tuple.hpp>
 #include <boost/tuple/tuple_comparison.hpp>
-
+#include <boost/numeric/ublas/matrix.hpp>
+#include <boost/timer.hpp>
 #include <boost/gil/image.hpp>
 #include <boost/gil/extension/io/jpeg_dynamic_io.hpp>
-
-#include <boost/numeric/ublas/matrix.hpp>
-
-//Not included in boost libraries, downloaded from Adobe's svn
-#include "../boost_1_53_0/boost/gil/extension/numeric/sampler.hpp"
+#include "../boost_1_53_0/boost/gil/extension/numeric/sampler.hpp" //Not included in boost libraries, downloaded from Adobe's svn
 #include "../boost_1_53_0/boost/gil/extension/numeric/resample.hpp"
-
-#include <fstream>
-
-#include <boost/timer.hpp>
 
 using namespace std;
 using namespace boost::gil;
 using namespace boost::tuples;
 using namespace boost::numeric::ublas;
+
+//Configuration
+const string imageNames[8] = {"oxford.jpg", "panda.jpg","red_dress.jpg","girl_shirt.jpg","lotus.jpg","flower_dress.jpg","flower.jpg","earth.jpg"};
+#define RESIZE_TO 450
+#define THRESHOLD_MIN 2
+#define THRESHOLD_MAX 256
+#define NUM_VARIED_WEIGHTS 9
+#define PERCENT_TO_TEST 0.60  //Center % of image to check
 
 //Just defining some types
 typedef boost::tuple<int, int, int> rgb;
@@ -35,7 +37,7 @@ typedef struct{
 	unsigned int occurences;
 	unsigned int weight;
 	int varied_weight;
-	unsigned long int varied_weights[9];
+	unsigned long int varied_weights[NUM_VARIED_WEIGHTS];
 	int avgX;
 	int avgY;
 } image_rgb;
@@ -43,7 +45,7 @@ typedef struct{
 	rgb value;
 	unsigned int occurences;
 	unsigned int weight;
-	unsigned long int varied_weights[9];
+	unsigned long int varied_weights[NUM_VARIED_WEIGHTS];
 	string hex;
 	string name;
 	int avgX;
@@ -70,28 +72,22 @@ list<image_rgb> rgbList;
 list<image_color> colorsInImage;
 list<color_def> colorDefinitions;
 
-//Configuration
-string imageNames[8] = {"oxford.jpg", "panda.jpg","red_dress.jpg","girl_shirt.jpg","lotus.jpg","flower_dress.jpg","flower.jpg","earth.jpg"};
-int resizeTo = 450;
-int minThreshold = 2;
-int maxThreshold = 256;
-int numVariedWeights = 9;
-float portionToTest = 0.60;  //Center % of image to check
-
 int main() {
 	//Timer from boost to test performance
 	boost::timer t;
-	
-	load_color_definitions();
 	
 	//Print to file
 	ofstream myfile;
 	myfile.open ("example.html");
 	
-	myfile << "<html><head><style>body{font-size: 11px;}.block{width:32px;height:32px;margin: -2px; margin-right: 2px !important; float:left;clear:both;}\n" <<
+	myfile << "<html>\n<head>\n<style>\nbody{font-size:11px;}\n.block{width:32px;height:32px;margin:-2px;margin-right:2px !important;float:left;clear:both;}\n" <<
 		  ".item{width:950px; margin-left: auto; margin-right: auto; clear:both;}\n" <<
 		  ".color{width:100%;padding: 2px; margin-bottom: 5px; border: 1px; clear:both;}\n" <<
-		  "</style></head><body>\n";
+		  "</style>\n</head>\n<body>\n";
+	
+	load_color_definitions();
+	
+	cout << "Colors loaded in " << t.elapsed() << "s\n";
 	
 	for( int i = 0; i < 8; ++i ){
 		rgbList.clear();
@@ -100,17 +96,23 @@ int main() {
 		//Load image
 		load_image(imageNames[i]);
 		
-		/*matrix<int> kernel (3, 3);
+		/*
+		//1D convolution
+		matrix<int> kernel (3, 3);
 		//Edge detect
 		kernel(0,0) = 0; kernel(1,0) = -1; kernel(2,0) = 0; 
 		kernel(0,1) = -1; kernel(1,1) = 4; kernel(2,1) = -1; 
-		kernel(0,2) = 0; kernel(1,2) = -1; kernel(2,2) = 0; 
+		kernel(0,2) = 0; kernel(1,2) = -1; kernel(2,2) = 0;
+		//Edge detect, alternative
+		kernel(0,0) = 0; kernel(1,0) = 1; kernel(2,0) = 0; 
+		kernel(0,1) = 1; kernel(1,1) = -4; kernel(2,1) = 1; 
+		kernel(0,2) = 0; kernel(1,2) = 1; kernel(2,2) = 0;
 		
 		kernel_1d_convolution( kernel );
 		*/
+		
 		matrix<int> kernelX (3, 3);
 		matrix<int> kernelY (3, 3);
-		
 		/*
 		//Sobel edge-detect
 		kernelX(0,0) = -1; kernelX(1,0) = 0; kernelX(2,0) = 1; 
@@ -140,12 +142,10 @@ int main() {
 		kernelY(0,1) = 0; kernelY(1,1) = 0; kernelY(2,1) = 0; 
 		kernelY(0,2) = -1; kernelY(1,2) = -1; kernelY(2,2) = -1;
 		
-		
-		kernel_2d_convolution( kernelX, kernelY );
-				    
-		//extract_rgb_values();
-		extract_rgb_values();
-		
+		kernel_2d_convolution( kernelX, kernelY ); //Creates a greyscale edge detect convolution
+
+		extract_rgb_values(); //Extracts and weights each pixel
+
 		//Test print
 		/*for( list<image_rgb>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
 			//rgb2 = get<0>(*it);
@@ -156,9 +156,8 @@ int main() {
 				" Weight: " << it->weight << endl;
 		}*/
 		
-		sort_rgb_values();
+		sort_rgb_values(); //Groups rgb values by their closest match in color_definitions
 		
-		//What we've all been waiting for.  Outputs the colors within the image in order of dominance
 		colorsInImage.sort( image_color_compare );
 		/*
 		for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
@@ -174,20 +173,13 @@ int main() {
 				cout << ", " << it->varied_weights[i];
 			cout << ")\n";
 		}*/
-		
 		jpeg_write_view(string("input")+(char)(i+49)+".jpg", view(sourceImage) );
 		jpeg_write_view(string("input_convoluted")+(char)(i+49)+".jpg", view(convolutedImage) );
 		
 		myfile << "<div class = 'item'>\n";
 		myfile << "<div class = 'image'>\n" <<
 			  "<img src='input" << i+1 << ".jpg'>\n" <<
-			  "<img src='input_convoluted" << i+1 << ".jpg'>\n</div>\n";
-		
-		/*for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
-			myfile << "<div class = 'block' style='background-color:" << it->hex << ";'></div>\n";
-		}*/	  
-		int imageWidth = sourceImage.width(), imageHeight = sourceImage.height();
-		int xc = imageWidth/2, yc = imageHeight/2;
+			  "<img src='input_convoluted" << i+1 << ".jpg'>\n</div>\n";  
 		for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
 			myfile << "<div class = 'color' style='border:solid 1px " << it->hex << ";'>\n" <<
 				  "<div class = 'block' style='background-color:" << it->hex << ";'></div>\n" <<
@@ -199,13 +191,13 @@ int main() {
 				" * Occurences: " << it->occurences << 
 				" </br> Weight: " << it->weight <<
 				"  * Varied Weights: (" << it->varied_weights[0];
-			for( int i = 1; i < numVariedWeights; ++i )
+			for( int i = 1; i < NUM_VARIED_WEIGHTS; ++i )
 				myfile << ", " << it->varied_weights[i];
-			myfile << ") * Average Position: (" << it->avgX << ", " << it->avgY << ") ->Dist from center: "<< sqrt(pow(it->avgX-xc,2)+pow(it->avgY-yc,2)) <<"\n</div>\n";
+			myfile << ") * Average Position: (" << it->avgX << ", " << it->avgY << ")\n</div>\n";
 		}
 		myfile << "</div>\n";
 	}
-	myfile << "</body></html>\n";
+	myfile << "</body>\n</html>\n";
 	myfile.close();
 
 	cout << "Time elapsed: " << t.elapsed() << "s\n";
@@ -219,9 +211,9 @@ void load_image(string filename){
 	jpeg_read_image( filename, loadedImage );
 
 	//Perform resize if necessary
-	if( resizeTo != 0 && (loadedImage.width() > resizeTo || loadedImage.height() > resizeTo) ){
-		loadedImage.width() > loadedImage.height() ? sourceImage.recreate(resizeTo,(resizeTo*(float)loadedImage.height()/loadedImage.width()))
-							   : sourceImage.recreate((resizeTo*(float)loadedImage.width()/loadedImage.height()),resizeTo);
+	if( RESIZE_TO != 0 && (loadedImage.width() > RESIZE_TO || loadedImage.height() > RESIZE_TO) ){
+		loadedImage.width() > loadedImage.height() ? sourceImage.recreate(RESIZE_TO,(RESIZE_TO*(float)loadedImage.height()/loadedImage.width()))
+							   : sourceImage.recreate((RESIZE_TO*(float)loadedImage.width()/loadedImage.height()),RESIZE_TO);
 		resize_view( const_view(loadedImage), view(sourceImage), bilinear_sampler() );
 	}else{
 		sourceImage.recreate( loadedImage.dimensions() );
@@ -296,23 +288,19 @@ void kernel_2d_convolution(matrix<int> kernelX, matrix<int> kernelY, float divis
 				}
 			*dstLoc = sqrt( pow(dstXValue, 2) + pow( dstYValue, 2) )/divisor;
 			
+			//Get rid of horizontal and vertical edges
 			float degrees;
 			dstXValue != 0 ? degrees = atan ((float)dstYValue/dstXValue)*57.2957795 : degrees = 0;
 			if( degrees < 0 )
 				degrees += 180;
 			if( degrees < 22.5 )
 				degrees = 0;
-			else if( degrees < 67.5 )
-				degrees = 45;
-			else if( degrees < 112.5 )
+			else if( degrees > 67.5 && degrees < 112.5 )
 				degrees = 90;
-			else
-				degrees = 135;
-			
 			if( degrees == 0 || degrees == 90 )
 				*dstLoc = 0;
 			//cout << atan ((float)dstYValue/dstXValue)*57.2957795 << endl;
-			
+
 			++srcLoc.x();
 			++dstLoc.x();
 		}
@@ -326,29 +314,29 @@ void kernel_2d_convolution(matrix<int> kernelX, matrix<int> kernelY, float divis
 void extract_rgb_values(){
 	rgb8_view_t src = view(sourceImage);
 	gray8_view_t test = view(convolutedImage);
-	
+
 	//Perform some commonly used operations so they aren't done too often
-	int imageWidth = sourceImage.width()*portionToTest, imageHeight = sourceImage.height()*portionToTest;
+	int imageWidth = sourceImage.width()*PERCENT_TO_TEST, imageHeight = sourceImage.height()*PERCENT_TO_TEST;
 	int xc = imageWidth/2, yc = imageHeight/2;
 	int numPix = imageWidth*imageHeight;
-	
+
 	//Prepare to traverse pixels!
 	int x,y, i, j;
 	rgb8_pixel_t pixel;
 	image_rgb currentRgb;
-	rgb8_view_t::xy_locator srcLoc = src.xy_at(sourceImage.width()*((1-portionToTest)/2),sourceImage.height()*((1-portionToTest)/2));
-	gray8_view_t::xy_locator testLoc = test.xy_at(sourceImage.width()*((1-portionToTest)/2),sourceImage.height()*((1-portionToTest)/2));
+	rgb8_view_t::xy_locator srcLoc = src.xy_at(sourceImage.width()*((1-PERCENT_TO_TEST)/2),sourceImage.height()*((1-PERCENT_TO_TEST)/2));
+	gray8_view_t::xy_locator testLoc = test.xy_at(sourceImage.width()*((1-PERCENT_TO_TEST)/2),sourceImage.height()*((1-PERCENT_TO_TEST)/2));
 
 	for( y = imageHeight-1; y > 0; y-- ){
 		for( x = 0; x < imageWidth-1; x++ ){
 			//Calculate varied_weight from convolution
-			for( i = 0; i < numVariedWeights; ++i )
+			for( i = 0; i < NUM_VARIED_WEIGHTS; ++i )
 				currentRgb.varied_weights[i] = 0;
 			
 			currentRgb.varied_weight = 0;
 			for( i = -1; i <= 1; ++i )
 				for( j = -1; j <= 1; ++j )
-					if( abs( *testLoc - (testLoc(i, j)) ) >= minThreshold && abs( *testLoc - (testLoc(i, j)) ) <= maxThreshold )
+					if( abs( *testLoc - (testLoc(i, j)) ) >= THRESHOLD_MIN && abs( *testLoc - (testLoc(i, j)) ) <= THRESHOLD_MAX )
 						currentRgb.varied_weight++;
 			currentRgb.varied_weights[currentRgb.varied_weight]++;
 
@@ -393,8 +381,7 @@ void load_color_definitions(){
 		while( fgetc(fp) != '\n' && !feof(fp) ); //Go to next line
 	}while( !feof(fp) );
 	
-	//Cleaning up after myself
-	delete str;
+	delete str;  //Cleaning up after myself
 	
 	//Test print
 	/*for( list<color_def>::iterator it = colorDefinitions.begin(); it != colorDefinitions.end(); ++it ){
@@ -434,10 +421,8 @@ void sort_rgb_values(){
 		color.weight = it->weight;
 		color.avgX = it->avgX;
 		color.avgY = it->avgY;
-		for( int i = 0; i < numVariedWeights; ++i ){
-			//color.varied_weights[i] = 0;
+		for( int i = 0; i < NUM_VARIED_WEIGHTS; ++i )
 			color.varied_weights[i] = it->varied_weights[i];
-		}
 		insert_image_color( color );
 	}
 }
@@ -456,7 +441,7 @@ void insert_image_rgb(image_rgb rgb){
 			rgb.avgY = (rgb.avgY*rgb.occurences+it->avgY*it->occurences)/(rgb.occurences+it->occurences);
 			rgb.occurences += it->occurences;
 			rgb.weight += it->weight;
-			for( int i = 0; i < numVariedWeights; ++i )
+			for( int i = 0; i < NUM_VARIED_WEIGHTS; ++i )
 				rgb.varied_weights[i] += it->varied_weights[i];
 			it = rgbList.erase(it);
 			rgbList.insert(it, rgb);
@@ -478,7 +463,7 @@ void insert_image_color(image_color color){
 			color.avgY = (color.avgY*color.occurences+it->avgY*it->occurences)/(color.occurences+it->occurences);
 			color.occurences += it->occurences;
 			color.weight += it->weight;
-			for( int i = 0; i < numVariedWeights; ++i )
+			for( int i = 0; i < NUM_VARIED_WEIGHTS; ++i )
 				color.varied_weights[i] += it->varied_weights[i];
 			it = colorsInImage.erase(it);
 			colorsInImage.insert(it, color);
@@ -486,15 +471,13 @@ void insert_image_color(image_color color){
 	}
 }
 
-bool image_color_compare (image_color first, image_color second)
-{
+bool image_color_compare (image_color first, image_color second){
 	unsigned long long int firstWeight = 0, secondWeight = 0;
-	for( int i = 0; i < numVariedWeights; ++i ){
+	for( int i = 0; i < NUM_VARIED_WEIGHTS; ++i ){
 		firstWeight += first.varied_weights[i]*i;
 		secondWeight += second.varied_weights[i]*i;
 	}
 	
-	//if( firstWeight/first.occurences > secondWeight/second.occurences ) return true;
 	if( firstWeight > secondWeight ) return true;
 	else return false;
 }
