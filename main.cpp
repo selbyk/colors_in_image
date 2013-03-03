@@ -94,7 +94,7 @@ int main() {
 		colorsInImage.clear();
 	  
 		//Load image
-		load_image(imageNames[i]);
+		load_image("test_images/"+imageNames[i]);
 		
 		/*
 		//1D convolution
@@ -173,13 +173,13 @@ int main() {
 				cout << ", " << it->varied_weights[i];
 			cout << ")\n";
 		}*/
-		jpeg_write_view(string("input")+(char)(i+49)+".jpg", view(sourceImage) );
-		jpeg_write_view(string("input_convoluted")+(char)(i+49)+".jpg", view(convolutedImage) );
+		jpeg_write_view(string("images/input")+(char)(i+49)+".jpg", view(sourceImage) );
+		jpeg_write_view(string("images/input_convoluted")+(char)(i+49)+".jpg", view(convolutedImage) );
 		
 		myfile << "<div class = 'item'>\n";
 		myfile << "<div class = 'image'>\n" <<
-			  "<img src='input" << i+1 << ".jpg'>\n" <<
-			  "<img src='input_convoluted" << i+1 << ".jpg'>\n</div>\n";  
+			  "<img src='images/input" << i+1 << ".jpg'>\n" <<
+			  "<img src='images/input_convoluted" << i+1 << ".jpg'>\n</div>\n";  
 		for( list<image_color>::iterator it = colorsInImage.begin(); it != colorsInImage.end(); ++it ){
 			myfile << "<div class = 'color' style='border:solid 1px " << it->hex << ";'>\n" <<
 				  "<div class = 'block' style='background-color:" << it->hex << ";'></div>\n" <<
