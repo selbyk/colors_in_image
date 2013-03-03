@@ -524,7 +524,7 @@ void extract_rgb_values(){
 	int numPix = imageWidth*imageHeight;
 	
 	//Prepare to traverse pixels!
-	int x,y;
+	int x,y, i, j;
 	rgb8_pixel_t pixel;
 	image_rgb currentRgb;
 	rgb8_view_t::xy_locator srcLoc = src.xy_at(1,1);
@@ -533,52 +533,22 @@ void extract_rgb_values(){
 	for( y = imageHeight-1; y > 0; y-- ){
 		for( x = 0; x < imageWidth-1; x++ ){
 			//Calculate varied_weight from convolution
-			for( int i = 0; i < numVariedWeights; ++i )
+			for( i = 0; i < numVariedWeights; ++i )
 				currentRgb.varied_weights[i] = 0;
-			currentRgb.varied_weight = 0;
-			if( abs( *testLoc - (testLoc(0, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(0, 1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(1, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 0)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(1, -1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, -1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(0,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(0, -1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-1,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, -1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-1, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 0)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//step further
-			/*
-			if( abs( *testLoc - (testLoc(0, 2)) ) >= minThreshold && abs( *testLoc - (testLoc(0, 2)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//if( abs( *testLoc - (testLoc(1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 1)) ) <= maxThreshold )
-				//currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(2, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(2, 0)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//if( abs( *testLoc - (testLoc(1, -1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, -1)) ) <= maxThreshold )
-				//currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(0,-2)) ) >= minThreshold && abs( *testLoc - (testLoc(0, -2)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//if( abs( *testLoc - (testLoc(-1,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, -1)) ) <= maxThreshold )
-				//currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-2, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(-2, 0)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//if( abs( *testLoc - (testLoc(-1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 1)) ) <= maxThreshold )
-				//currentRgb.varied_weight++;
-			*/
-			currentRgb.varied_weights[currentRgb.varied_weight]++;
-				//currentRgb.varied_weights[currentRgb.varied_weight] += (*testLoc)/10;
 			
+			currentRgb.varied_weight = 0;
+			for( i = -1; i <= 1; ++i )
+				for( j = -1; j <= 1; ++j )
+					if( abs( *testLoc - (testLoc(i, j)) ) >= minThreshold && abs( *testLoc - (testLoc(i, j)) ) <= maxThreshold )
+						currentRgb.varied_weight++;
+			currentRgb.varied_weights[currentRgb.varied_weight]++;
+
 			pixel = *srcLoc;
 			get<0>(currentRgb.value) = (int)at_c<0>(pixel);
 			get<1>(currentRgb.value) = (int)at_c<1>(pixel);
 			get<2>(currentRgb.value) = (int)at_c<2>(pixel);
 			currentRgb.occurences = 1;
+			
 			//Eqn to calculate pixel weight... needs to be thought through more.
 			//In addition to this, weight is divided by occurences in sort
 			currentRgb.weight = (float)numPix/sqrt(pow( xc-x, 2 ) + pow( yc-y, 2 )+2);
