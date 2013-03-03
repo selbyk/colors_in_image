@@ -54,11 +54,7 @@ typedef struct{
 void load_image(string filename);
 void kernel_1d_convolution(matrix<int> kernel);
 void kernel_2d_convolution(matrix<int> kernelX, matrix<int> kernelY, float divisor = 1);
-void convolve_image();
-void sobel_image();
-void sharr_image();
 void extract_rgb_values();
-void extract_rgb_values_minus_20();
 void sort_rgb_values();
 
 //List insertion and sorting
@@ -73,10 +69,14 @@ gray8_image_t convolutedImage;
 list<image_rgb> rgbList;
 list<image_color> colorsInImage;
 list<color_def> colorDefinitions;
+
+//Configuration
+string imageNames[8] = {"oxford.jpg", "panda.jpg","red_dress.jpg","girl_shirt.jpg","lotus.jpg","flower_dress.jpg","flower.jpg","earth.jpg"};
 int resizeTo = 450;
 int minThreshold = 2;
 int maxThreshold = 256;
 int numVariedWeights = 9;
+float portionToTest = 0.60;  //Center % of image to check
 
 int main() {
 	//Timer from boost to test performance
@@ -93,16 +93,6 @@ int main() {
 		  ".color{width:100%;padding: 2px; margin-bottom: 5px; border: 1px; clear:both;}\n" <<
 		  "</style></head><body>\n";
 	
-	string imageNames[8];
-	imageNames[0] = "oxford.jpg"; 
-	imageNames[1] = "panda.jpg";
-	imageNames[2] = "red_dress.jpg";
-	imageNames[3] = "girl_shirt.jpg";
-	imageNames[4] = "lotus.jpg";
-	imageNames[5] = "flower_dress.jpg";
-	imageNames[6] = "flower.jpg";
-	imageNames[7] = "earth.jpg";
-	
 	for( int i = 0; i < 8; ++i ){
 		rgbList.clear();
 		colorsInImage.clear();
@@ -110,11 +100,7 @@ int main() {
 		//Load image
 		load_image(imageNames[i]);
 		
-		//convolve_image();
-		//sobel_image();
-		//sharr_image();
 		/*matrix<int> kernel (3, 3);
-		
 		//Edge detect
 		kernel(0,0) = 0; kernel(1,0) = -1; kernel(2,0) = 0; 
 		kernel(0,1) = -1; kernel(1,1) = 4; kernel(2,1) = -1; 
@@ -158,7 +144,7 @@ int main() {
 		kernel_2d_convolution( kernelX, kernelY );
 				    
 		//extract_rgb_values();
-		extract_rgb_values_minus_20();
+		extract_rgb_values();
 		
 		//Test print
 		/*for( list<image_rgb>::iterator it = rgbList.begin(); it != rgbList.end(); ++it ){
@@ -231,9 +217,7 @@ void load_image(string filename){
 	rgb8_image_t loadedImage;
 	
 	jpeg_read_image( filename, loadedImage );
-	//Deminsion restraint to resize to, in px 
 
-	
 	//Perform resize if necessary
 	if( resizeTo != 0 && (loadedImage.width() > resizeTo || loadedImage.height() > resizeTo) ){
 		loadedImage.width() > loadedImage.height() ? sourceImage.recreate(resizeTo,(resizeTo*(float)loadedImage.height()/loadedImage.width()))
@@ -242,181 +226,6 @@ void load_image(string filename){
 	}else{
 		sourceImage.recreate( loadedImage.dimensions() );
 		copy_pixels( const_view(loadedImage), view(sourceImage) );
-	}
-}
-
-void convolve_image(){
-	convolutedImage.recreate( sourceImage.dimensions() );
-
-	//Create grayscale copy of original image
-	copy_pixels(color_converted_view<gray8_pixel_t>( const_view(sourceImage)), view(convolutedImage) );
-	
-	gray8_image_t grayscaleImage( sourceImage.width()+2, sourceImage.height()+2 );
-	
-	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
-	
-	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
-	
-	gray8_view_t src = view(grayscaleImage);
-	gray8_view_t dst = view(convolutedImage);
-	
-	gray8_pixel_t pixel;
-	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
-	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
-	int x,y, dstValue;
-	for( y = 0; y < yMax; ++y ){
-		for( x = 0; x < xMax; ++x ){
-			dstValue = 0;
-			dstValue += 4*(*srcLoc);
-			dstValue -= srcLoc(0,1);
-			dstValue -= srcLoc(1,0);
-			dstValue -= srcLoc(0,-1);
-			dstValue -= srcLoc(-1,0);
-			if( dstValue < 0 )
-				dstValue = 0;
-			*dstLoc = dstValue;
-
-			++srcLoc.x();
-			++dstLoc.x();
-		}
-		srcLoc.x() -= xMax;
-		dstLoc.x() -= xMax;
-		srcLoc.y()++;
-		dstLoc.y()++;
-	}
-  /*
-	convolutedImage.recreate( sourceImage.dimensions() );
-	//Create grayscale copy of original image
-	copy_pixels(color_converted_view<gray8_pixel_t>(const_view(sourceImage)), view(convolutedImage));
-	
-	gray8_image_t grayscaleImage( sourceImage.width()+4, sourceImage.height()+4 );
-	
-	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
-	
-	convolutedImage.recreate( sourceImage.width()+2, sourceImage.height()+2 );
-	
-	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
-	
-	gray8_view_t src = view(grayscaleImage);
-	gray8_view_t dst = view(convolutedImage);
-	
-	gray8_pixel_t pixel;
-	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
-	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
-	int x,y, dstValue;
-	for( y = 0; y < yMax; ++y ){
-		for( x = 0; x < xMax; ++x ){
-			dstValue = 0;
-			dstValue += 8*(*srcLoc);
-			dstValue -= srcLoc(-1,1);
-			dstValue -= srcLoc(1,1);
-			dstValue -= srcLoc(1,-1);
-			dstValue -= srcLoc(-1,-1);
-			dstValue -= srcLoc(0,1);
-			dstValue -= srcLoc(1,0);
-			dstValue -= srcLoc(0,-1);
-			dstValue -= srcLoc(-1,0);
-			if( dstValue < 0 )
-				dstValue = 0;
-			*dstLoc = dstValue;
-			//cout << (int)*srcLoc << "=>" << dstValue << endl;
-			//cout << (int)at_c<1>(pixel)<< endl;
-			//cout << (int)at_c<2>(pixel) ;
-			++srcLoc.x();
-			++dstLoc.x();
-		}
-		srcLoc.x() -= (xMax);
-		dstLoc.x() -= (xMax);
-		srcLoc.y()++;
-		dstLoc.y()++;
-	}*/
-}
-
-void sobel_image(){
-	convolutedImage.recreate( sourceImage.dimensions() );
-	//Create grayscale copy of original image
-	copy_pixels(color_converted_view<gray8_pixel_t>(const_view(sourceImage)), view(convolutedImage));
-	
-	gray8_image_t grayscaleImage( sourceImage.width()+4, sourceImage.height()+4 );
-	
-	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
-	
-	convolutedImage.recreate( sourceImage.width()+2, sourceImage.height()+2 );
-	
-	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
-	
-	gray8_view_t src = view(grayscaleImage);
-	gray8_view_t dst = view(convolutedImage);
-	
-	gray8_pixel_t pixel;
-	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
-	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
-	int x,y, dstX, dstY;
-	for( y = 0; y < yMax; ++y ){
-		for( x = 0; x < xMax; ++x ){
-			dstX = 0;
-			dstX += -1*srcLoc(-1,1); dstX += 0*srcLoc(0,1); dstX += srcLoc(1,1);
-			dstX += -2*srcLoc(-1,0);  dstX += 0*(*srcLoc); dstX += 2*srcLoc(1,0);
-			dstX += -1*srcLoc(-1,-1); dstX += 0*srcLoc(0,-1); dstX += srcLoc(1,-1);
-			dstY = 0;
-			dstY += -1*srcLoc(-1,1); dstY += -2*srcLoc(0,1); dstY += -1*srcLoc(1,1);
-			dstY += 0*srcLoc(-1,0);  dstY += 0*(*srcLoc); dstY += 0*srcLoc(1,0);
-			dstY += 1*srcLoc(-1,-1); dstY += 2*srcLoc(0,-1); dstY += 1*srcLoc(1,-1);
-			*dstLoc = sqrt(pow(dstX,2)+pow(dstY,2));
-			//cout << (int)*srcLoc << "=>" << dstValue << endl;
-			//cout << (int)at_c<1>(pixel)<< endl;
-			//cout << (int)at_c<2>(pixel) ;
-			++srcLoc.x();
-			++dstLoc.x();
-		}
-		srcLoc.x() -= (xMax);
-		dstLoc.x() -= (xMax);
-		srcLoc.y()++;
-		dstLoc.y()++;
-	}
-}
-
-void sharr_image(){
-	convolutedImage.recreate( sourceImage.dimensions() );
-	//Create grayscale copy of original image
-	copy_pixels(color_converted_view<gray8_pixel_t>(const_view(sourceImage)), view(convolutedImage));
-	
-	gray8_image_t grayscaleImage( sourceImage.width()+4, sourceImage.height()+4 );
-	
-	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
-	
-	convolutedImage.recreate( sourceImage.width()+2, sourceImage.height()+2 );
-	
-	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
-	
-	gray8_view_t src = view(grayscaleImage);
-	gray8_view_t dst = view(convolutedImage);
-	
-	gray8_pixel_t pixel;
-	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
-	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
-	int x,y, dstX, dstY;
-	for( y = 0; y < yMax; ++y ){
-		for( x = 0; x < xMax; ++x ){
-			dstX = 0;
-			dstX += 3*srcLoc(-1,1); dstX += 0*srcLoc(0,1); dstX += -3*srcLoc(1,1);
-			dstX += 10*srcLoc(-1,0);  dstX += 0*(*srcLoc); dstX += -10*srcLoc(1,0);
-			dstX += 3*srcLoc(-1,-1); dstX += 0*srcLoc(0,-1); dstX += -3*srcLoc(1,-1);
-			dstY = 0;
-			dstY += 3*srcLoc(-1,1); dstY += 10*srcLoc(0,1); dstY += 3*srcLoc(1,1);
-			dstY += 0*srcLoc(-1,0);  dstY += 0*(*srcLoc); dstY += 0*srcLoc(1,0);
-			dstY += -3*srcLoc(-1,-1); dstY += -10*srcLoc(0,-1); dstY += -3*srcLoc(1,-1);
-			*dstLoc = sqrt(pow(dstX,2)+pow(dstY,2))/13;
-			//cout << (int)*srcLoc << "=>" << dstValue << endl;
-			//cout << (int)at_c<1>(pixel)<< endl;
-			//cout << (int)at_c<2>(pixel) ;
-			++srcLoc.x();
-			++dstLoc.x();
-		}
-		srcLoc.x() -= (xMax);
-		dstLoc.x() -= (xMax);
-		srcLoc.y()++;
-		dstLoc.y()++;
 	}
 }
 
@@ -519,7 +328,7 @@ void extract_rgb_values(){
 	gray8_view_t test = view(convolutedImage);
 	
 	//Perform some commonly used operations so they aren't done too often
-	int imageWidth = sourceImage.width(), imageHeight = sourceImage.height();
+	int imageWidth = sourceImage.width()*portionToTest, imageHeight = sourceImage.height()*portionToTest;
 	int xc = imageWidth/2, yc = imageHeight/2;
 	int numPix = imageWidth*imageHeight;
 	
@@ -527,8 +336,8 @@ void extract_rgb_values(){
 	int x,y, i, j;
 	rgb8_pixel_t pixel;
 	image_rgb currentRgb;
-	rgb8_view_t::xy_locator srcLoc = src.xy_at(1,1);
-	gray8_view_t::xy_locator testLoc = test.xy_at(1,1);
+	rgb8_view_t::xy_locator srcLoc = src.xy_at(sourceImage.width()*((1-portionToTest)/2),sourceImage.height()*((1-portionToTest)/2));
+	gray8_view_t::xy_locator testLoc = test.xy_at(sourceImage.width()*((1-portionToTest)/2),sourceImage.height()*((1-portionToTest)/2));
 
 	for( y = imageHeight-1; y > 0; y-- ){
 		for( x = 0; x < imageWidth-1; x++ ){
@@ -565,86 +374,6 @@ void extract_rgb_values(){
 	}
 }
 
-void extract_rgb_values_minus_20(){
-	rgb8_view_t src = view(sourceImage);
-	gray8_view_t test = view(convolutedImage);
-	
-	//Perform some commonly used operations so they aren't done too often
-	int imageWidth = sourceImage.width()*0.60, imageHeight = sourceImage.height()*0.60;
-	int xc = imageWidth/2, yc = imageHeight/2;
-	int numPix = imageWidth*imageHeight;
-	
-	//Prepare to traverse pixels!
-	int x,y;
-	rgb8_pixel_t pixel;
-	image_rgb currentRgb;
-	rgb8_view_t::xy_locator srcLoc = src.xy_at(sourceImage.width()*0.20,sourceImage.height()*0.20);
-	gray8_view_t::xy_locator testLoc = test.xy_at(sourceImage.width()*0.20,sourceImage.height()*0.20);
-
-	for( y = imageHeight-1; y > 0; y-- ){
-		for( x = 0; x < imageWidth-1; x++ ){
-			//Calculate varied_weight from convolution
-			for( int i = 0; i < numVariedWeights; ++i )
-				currentRgb.varied_weights[i] = 0;
-			currentRgb.varied_weight = 0;
-			if( abs( *testLoc - (testLoc(0, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(0, 1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(1, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 0)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(1, -1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, -1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(0,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(0, -1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-1,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, -1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-1, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 0)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 1)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//step further
-			/*if( abs( *testLoc - (testLoc(0, 2)) ) >= minThreshold && abs( *testLoc - (testLoc(0, 2)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//if( abs( *testLoc - (testLoc(1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, 1)) ) <= maxThreshold )
-				//currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(2, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(2, 0)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//if( abs( *testLoc - (testLoc(1, -1)) ) >= minThreshold && abs( *testLoc - (testLoc(1, -1)) ) <= maxThreshold )
-				//currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(0,-2)) ) >= minThreshold && abs( *testLoc - (testLoc(0, -2)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//if( abs( *testLoc - (testLoc(-1,-1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, -1)) ) <= maxThreshold )
-				//currentRgb.varied_weight++;
-			if( abs( *testLoc - (testLoc(-2, 0)) ) >= minThreshold && abs( *testLoc - (testLoc(-2, 0)) ) <= maxThreshold )
-				currentRgb.varied_weight++;
-			//if( abs( *testLoc - (testLoc(-1, 1)) ) >= minThreshold && abs( *testLoc - (testLoc(-1, 1)) ) <= maxThreshold )
-				//currentRgb.varied_weight++;
-			*/
-			currentRgb.varied_weights[currentRgb.varied_weight]++;
-			//currentRgb.varied_weights[currentRgb.varied_weight] += (*testLoc)/10;
-			
-			pixel = *srcLoc;
-			get<0>(currentRgb.value) = (int)at_c<0>(pixel);
-			get<1>(currentRgb.value) = (int)at_c<1>(pixel);
-			get<2>(currentRgb.value) = (int)at_c<2>(pixel);
-			currentRgb.occurences = 1;
-			//Eqn to calculate pixel weight... needs to be thought through more.
-			//In addition to this, weight is divided by occurences in sort
-			currentRgb.weight = (float)numPix/sqrt(pow( xc-x, 2 ) + pow( yc-y, 2 )+2);
-			currentRgb.avgX = x;
-			currentRgb.avgY = y;
-			insert_image_rgb( currentRgb );
-			++srcLoc.x();
-			++testLoc.x();
-		}
-		srcLoc.x() -= (imageWidth - 1);
-		testLoc.x() -= (imageWidth - 1);
-		srcLoc.y()++;
-		testLoc.y()++;
-	}
-}
-
 void load_color_definitions(){
 	//Load color definitions from file, yo
 	FILE *fp;
@@ -663,18 +392,8 @@ void load_color_definitions(){
 		//cout << currentColor.name << endl;
 		while( fgetc(fp) != '\n' && !feof(fp) ); //Go to next line
 	}while( !feof(fp) );
-	/*while( fscanf(fp,"%s : %s : %i : %i : %i", name, hex, &get<0>(currentColor.value),
-					      &get<1>(currentColor.value), &get<2>(currentColor.value) ) > 0 ){
-		
-		currentColor.name = name;
-		currentColor.hex = hex;
-		colorDefinitions.push_back( currentColor );
-	cout << currentColor.name;
-		
-	}*/
 	
 	//Cleaning up after myself
-	//delete name;
 	delete str;
 	
 	//Test print
