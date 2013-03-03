@@ -8,6 +8,8 @@
 #include <boost/gil/image.hpp>
 #include <boost/gil/extension/io/jpeg_dynamic_io.hpp>
 
+#include <boost/numeric/ublas/matrix.hpp>
+
 //Not included in boost libraries, downloaded from Adobe's svn
 #include "../boost_1_53_0/boost/gil/extension/numeric/sampler.hpp"
 #include "../boost_1_53_0/boost/gil/extension/numeric/resample.hpp"
@@ -19,6 +21,7 @@
 using namespace std;
 using namespace boost::gil;
 using namespace boost::tuples;
+using namespace boost::numeric::ublas;
 
 //Just defining some types
 typedef boost::tuple<int, int, int> rgb;
@@ -49,7 +52,9 @@ typedef struct{
 
 //Image manipulation functions
 void load_image(string filename);
-void convolute_image();
+void kernel_1d_convolution(matrix<int> kernel);
+void kernel_2d_convolution(matrix<int> kernelX, matrix<int> kernelY, float divisor = 1);
+void convolve_image();
 void sobel_image();
 void sharr_image();
 void extract_rgb_values();
@@ -105,10 +110,53 @@ int main() {
 		//Load image
 		load_image(imageNames[i]);
 		
-		convolute_image();
+		//convolve_image();
 		//sobel_image();
 		//sharr_image();
+		/*matrix<int> kernel (3, 3);
 		
+		//Edge detect
+		kernel(0,0) = 0; kernel(1,0) = -1; kernel(2,0) = 0; 
+		kernel(0,1) = -1; kernel(1,1) = 4; kernel(2,1) = -1; 
+		kernel(0,2) = 0; kernel(1,2) = -1; kernel(2,2) = 0; 
+		
+		kernel_1d_convolution( kernel );
+		*/
+		matrix<int> kernelX (3, 3);
+		matrix<int> kernelY (3, 3);
+		
+		/*
+		//Sobel edge-detect
+		kernelX(0,0) = -1; kernelX(1,0) = 0; kernelX(2,0) = 1; 
+		kernelX(0,1) = -2; kernelX(1,1) = 0; kernelX(2,1) = 2; 
+		kernelX(0,2) = -1; kernelX(1,2) = 0; kernelX(2,2) = 1; 
+		
+		kernelY(0,0) = -1; kernelY(1,0) = -2; kernelY(2,0) = -1; 
+		kernelY(0,1) = 0; kernelY(1,1) = 0; kernelY(2,1) = 0; 
+		kernelY(0,2) = 1; kernelY(1,2) = 2; kernelY(2,2) = 1; 
+		*/
+		/*
+		//Scharr's edge-detect
+		kernelX(0,0) = 3; kernelX(1,0) = 0; kernelX(2,0) = -3; 
+		kernelX(0,1) = 10; kernelX(1,1) = 0; kernelX(2,1) = -10; 
+		kernelX(0,2) = 3; kernelX(1,2) = 0; kernelX(2,2) = -3; 
+		
+		kernelY(0,0) = 3; kernelY(1,0) = 10; kernelY(2,0) = 3; 
+		kernelY(0,1) = 0; kernelY(1,1) = 0; kernelY(2,1) = 0; 
+		kernelY(0,2) = -3; kernelY(1,2) = -10; kernelY(2,2) = -3; 
+		*/
+		//Prewitt edge-detect
+		kernelX(0,0) = -1; kernelX(1,0) = 0; kernelX(2,0) = 1; 
+		kernelX(0,1) = -1; kernelX(1,1) = 0; kernelX(2,1) = 1; 
+		kernelX(0,2) = -1; kernelX(1,2) = 0; kernelX(2,2) = 1; 
+		
+		kernelY(0,0) = 1; kernelY(1,0) = 1; kernelY(2,0) = 1; 
+		kernelY(0,1) = 0; kernelY(1,1) = 0; kernelY(2,1) = 0; 
+		kernelY(0,2) = -1; kernelY(1,2) = -1; kernelY(2,2) = -1;
+		
+		
+		kernel_2d_convolution( kernelX, kernelY );
+				    
 		//extract_rgb_values();
 		extract_rgb_values_minus_20();
 		
@@ -197,7 +245,46 @@ void load_image(string filename){
 	}
 }
 
-void convolute_image(){
+void convolve_image(){
+	convolutedImage.recreate( sourceImage.dimensions() );
+
+	//Create grayscale copy of original image
+	copy_pixels(color_converted_view<gray8_pixel_t>( const_view(sourceImage)), view(convolutedImage) );
+	
+	gray8_image_t grayscaleImage( sourceImage.width()+2, sourceImage.height()+2 );
+	
+	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
+	
+	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
+	
+	gray8_view_t src = view(grayscaleImage);
+	gray8_view_t dst = view(convolutedImage);
+	
+	gray8_pixel_t pixel;
+	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
+	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
+	int x,y, dstValue;
+	for( y = 0; y < yMax; ++y ){
+		for( x = 0; x < xMax; ++x ){
+			dstValue = 0;
+			dstValue += 4*(*srcLoc);
+			dstValue -= srcLoc(0,1);
+			dstValue -= srcLoc(1,0);
+			dstValue -= srcLoc(0,-1);
+			dstValue -= srcLoc(-1,0);
+			if( dstValue < 0 )
+				dstValue = 0;
+			*dstLoc = dstValue;
+
+			++srcLoc.x();
+			++dstLoc.x();
+		}
+		srcLoc.x() -= xMax;
+		dstLoc.x() -= xMax;
+		srcLoc.y()++;
+		dstLoc.y()++;
+	}
+  /*
 	convolutedImage.recreate( sourceImage.dimensions() );
 	//Create grayscale copy of original image
 	copy_pixels(color_converted_view<gray8_pixel_t>(const_view(sourceImage)), view(convolutedImage));
@@ -242,7 +329,7 @@ void convolute_image(){
 		dstLoc.x() -= (xMax);
 		srcLoc.y()++;
 		dstLoc.y()++;
-	}
+	}*/
 }
 
 void sobel_image(){
@@ -328,6 +415,100 @@ void sharr_image(){
 		}
 		srcLoc.x() -= (xMax);
 		dstLoc.x() -= (xMax);
+		srcLoc.y()++;
+		dstLoc.y()++;
+	}
+}
+
+void kernel_1d_convolution(matrix<int> kernel){
+	convolutedImage.recreate( sourceImage.dimensions() );
+	//Create grayscale copy of original image
+	copy_pixels(color_converted_view<gray8_pixel_t>( const_view(sourceImage)), view(convolutedImage) );
+	gray8_image_t grayscaleImage( sourceImage.width()+2, sourceImage.height()+2 );
+	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
+	
+	int anchor = kernel.size1()/2;
+	
+	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
+	
+	gray8_view_t src = view(grayscaleImage);
+	gray8_view_t dst = view(convolutedImage);
+	
+	gray8_pixel_t pixel;
+	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
+	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
+	int x, y, i, j, dstValue;
+	for( y = 0; y < yMax; ++y ){
+		for( x = 0; x < xMax; ++x ){
+			dstValue = 0;
+			for( j = anchor; j >= -1*anchor; j-- )
+				for( i = -1*anchor; i <= anchor; i++ )
+					dstValue += srcLoc(i,j)*kernel(i+anchor,-1*j+anchor);
+			if( dstValue < 0 )
+				dstValue = 0;
+			*dstLoc = dstValue;
+			
+			++srcLoc.x();
+			++dstLoc.x();
+		}
+		srcLoc.x() -= xMax;
+		dstLoc.x() -= xMax;
+		srcLoc.y()++;
+		dstLoc.y()++;
+	}
+}
+
+void kernel_2d_convolution(matrix<int> kernelX, matrix<int> kernelY, float divisor){
+	convolutedImage.recreate( sourceImage.dimensions() );
+	//Create grayscale copy of original image
+	copy_pixels(color_converted_view<gray8_pixel_t>( const_view(sourceImage)), view(convolutedImage) );
+	gray8_image_t grayscaleImage( sourceImage.width()+2, sourceImage.height()+2 );
+	resize_view( const_view(convolutedImage), view(grayscaleImage), bilinear_sampler() );
+	
+	int anchor = kernelX.size1()/2;
+	
+	int xMax = convolutedImage.width(), yMax = convolutedImage.height();
+	
+	gray8_view_t src = view(grayscaleImage);
+	gray8_view_t dst = view(convolutedImage);
+	
+	gray8_pixel_t pixel;
+	gray8_view_t::xy_locator srcLoc = src.xy_at(1,1);
+	gray8_view_t::xy_locator dstLoc = dst.xy_at(0,0);
+	int x, y, i, j, dstXValue, dstYValue;
+	for( y = 0; y < yMax; ++y ){
+		for( x = 0; x < xMax; ++x ){
+			dstXValue = 0;
+			dstYValue = 0;
+			for( j = anchor; j >= -1*anchor; j-- )
+				for( i = -1*anchor; i <= anchor; i++ ){
+					dstXValue += srcLoc(i,j)*kernelX(i+anchor,-1*j+anchor);
+					dstYValue += srcLoc(i,j)*kernelY(i+anchor,-1*j+anchor);
+				}
+			*dstLoc = sqrt( pow(dstXValue, 2) + pow( dstYValue, 2) )/divisor;
+			
+			float degrees;
+			dstXValue != 0 ? degrees = atan ((float)dstYValue/dstXValue)*57.2957795 : degrees = 0;
+			if( degrees < 0 )
+				degrees += 180;
+			if( degrees < 22.5 )
+				degrees = 0;
+			else if( degrees < 67.5 )
+				degrees = 45;
+			else if( degrees < 112.5 )
+				degrees = 90;
+			else
+				degrees = 135;
+			
+			if( degrees == 0 || degrees == 90 )
+				*dstLoc = 0;
+			//cout << atan ((float)dstYValue/dstXValue)*57.2957795 << endl;
+			
+			++srcLoc.x();
+			++dstLoc.x();
+		}
+		srcLoc.x() -= xMax;
+		dstLoc.x() -= xMax;
 		srcLoc.y()++;
 		dstLoc.y()++;
 	}
