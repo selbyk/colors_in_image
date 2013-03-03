@@ -5,4 +5,4 @@ An attempt to detect the dominate, most important colors in an image.  The algor
 
 ## Examples
 
-  ![](http://img802.imageshack.us/img802/2849/examplet.jpg)
+  ![](https://raw.github.com/selbyk/colors_in_image/master/example.jpg)
